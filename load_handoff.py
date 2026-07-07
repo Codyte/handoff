@@ -12,6 +12,23 @@ Two modes:
 Handoff files live under ~/.claude/handoff/<sanitized-project-path>.md — per machine, NOT in the
 skills repo, so session state never pollutes the versioned skills.
 """
+# ====================== BEGIN NAV INDEX ======================
+# NAV INDEX — auto-generated symbol map (refresh via the navindex skill)
+#   L41    _key
+#   L45    _git_root
+#   L55    handoff_file
+#   L67    _archive_dir
+#   L74    _archive_files
+#   L81    ensure_hook
+#   L106   archive_current
+#   L124   _section
+#   L131   history
+#   L151   open_items
+#   L161   grep
+#   L173   _selftest
+#   L185   main
+# ======================= END NAV INDEX =======================
+
 import sys, os, json, re, pathlib, datetime
 
 # Windows consoles default to cp1252; handoff text (accents, em-dashes) would crash on print.
@@ -52,6 +69,13 @@ def _archive_dir(cwd):
     # global store mixes every project → keep per-project subfolders; a project-local store is
     # already scoped to one repo → archive sits directly under it.
     return base / "archive" / _key(cwd) if _git_root(cwd) is None else base / "archive"
+
+
+def _archive_files(cwd):
+    """Sorted archived handoff files (filename = timestamp = sort key), or []. Single source for
+    the archive glob shared by history() and grep()."""
+    arc_dir = _archive_dir(cwd)
+    return sorted(arc_dir.glob("*.md")) if arc_dir.exists() else []
 
 
 def ensure_hook():
@@ -108,8 +132,7 @@ def history(cwd):
     """Chronological digest of the archive: per past handoff, its Goal + Next steps +
     Open/blockers — the 'what was pending over time' view, derived on the fly from existing
     files so there is no second index to keep in sync and zero boot cost (Read on demand)."""
-    arc_dir = _archive_dir(cwd)
-    files = sorted(arc_dir.glob("*.md")) if arc_dir.exists() else []
+    files = _archive_files(cwd)
     if not files:
         return "(no archived handoffs yet)"
     out = []
@@ -138,10 +161,8 @@ def open_items(cwd):
 def grep(cwd, term):
     """Print archived handoffs whose text contains <term> (case-insensitive), with date + the
     matching lines — find when a decision/context appeared without grepping N paths by hand."""
-    arc_dir = _archive_dir(cwd)
-    files = sorted(arc_dir.glob("*.md")) if arc_dir.exists() else []
     out = []
-    for f in files:
+    for f in _archive_files(cwd):
         hits = [ln for ln in f.read_text(encoding="utf-8").splitlines()
                 if term.lower() in ln.lower()]
         if hits:
