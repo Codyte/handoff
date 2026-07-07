@@ -1,0 +1,61 @@
+{
+"__ver__": 2,
+"load_handoff.py": {
+"h": "1d4d74586f51cdadea8a878eb08cba94d4948188",
+"n": 282,
+"s": [
+[
+41,
+"_key"
+],
+[
+45,
+"_git_root"
+],
+[
+55,
+"handoff_file"
+],
+[
+67,
+"_archive_dir"
+],
+[
+74,
+"_archive_files"
+],
+[
+81,
+"ensure_hook"
+],
+[
+128,
+"archive_current"
+],
+[
+146,
+"_section"
+],
+[
+153,
+"history"
+],
+[
+173,
+"open_items"
+],
+[
+183,
+"grep"
+],
+[
+195,
+"_selftest"
+],
+[
+238,
+"main"
+]
+]
+}
+}

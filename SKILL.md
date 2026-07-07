@@ -17,8 +17,9 @@ on the next session, so after `/clear` you continue from exactly where you left 
    python "$HOME/.claude/skills/handoff/load_handoff.py" --ensure-hook
    ```
    Idempotent: registers the `SessionStart` hook in `~/.claude/settings.json` only if missing,
-   using this machine's own absolute path. After the first run on a machine, every later session
-   there auto-loads handoffs. No-op if already installed.
+   using this machine's own absolute path. The hook fires only on `startup|clear` — on
+   resume/compact the context already carries the thread, so injecting there would waste tokens.
+   Older installs without the matcher are migrated in place. No-op if already correct.
 1. Get the target path (keeps skill + hook in sync):
    ```
    python "$HOME/.claude/skills/handoff/load_handoff.py" --path
@@ -43,6 +44,8 @@ on the next session, so after `/clear` you continue from exactly where you left 
 <the current objective in 1-2 lines>
 
 ## State
+- HEAD: <`git rev-parse --short HEAD` at write time — on resume, compare against the current one
+  to detect drift; omit outside a repo>
 - Done: <what's finished>
 - In progress: <what's mid-flight, and exactly where>
 
@@ -93,5 +96,7 @@ of them, verify against live state (git/.env/etc.) — a handoff reflects the mo
   cloned repo's hooks anyway, so it would not save that one-time setup — it would only move it from
   one command to one trust prompt, per clone instead of per machine — while adding a reader script
   and a double-injection guard to every repo. Net loss.)
+- Handoffs are committed with the repo — never put secrets in them (tokens, passwords, `.env`
+  values); reference the file that holds them instead.
 - This does NOT run `/clear` for you (the agent cannot invoke built-in commands). It prepares the
   resume so that when *you* run `/clear`, nothing is lost.

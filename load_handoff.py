@@ -9,8 +9,8 @@ Two modes:
                                        hook's stdout is injected as context, so the next session
                                        (after /clear) resumes from the saved state automatically.
 
-Handoff files live under ~/.claude/handoff/<sanitized-project-path>.md — per machine, NOT in the
-skills repo, so session state never pollutes the versioned skills.
+Handoff files live in <repo>/.handoff/active.md when cwd is inside a git repo (versioned with the
+project), else under ~/.claude/handoff/<sanitized-project-path>.md (per machine).
 """
 # ====================== BEGIN NAV INDEX ======================
 # NAV INDEX — auto-generated symbol map (refresh via the navindex skill)
@@ -20,13 +20,13 @@ skills repo, so session state never pollutes the versioned skills.
 #   L67    _archive_dir
 #   L74    _archive_files
 #   L81    ensure_hook
-#   L106   archive_current
-#   L124   _section
-#   L131   history
-#   L151   open_items
-#   L161   grep
-#   L173   _selftest
-#   L185   main
+#   L128   archive_current
+#   L146   _section
+#   L153   history
+#   L173   open_items
+#   L183   grep
+#   L195   _selftest
+#   L238   main
 # ======================= END NAV INDEX =======================
 
 import sys, os, json, re, pathlib, datetime
@@ -78,29 +78,51 @@ def _archive_files(cwd):
     return sorted(arc_dir.glob("*.md")) if arc_dir.exists() else []
 
 
-def ensure_hook():
+def ensure_hook(settings=None):
     """Idempotently register the SessionStart hook that injects the active handoff at boot.
     The skill (writer) and this hook (reader) are separate pieces; copying the skill folder to a
     new machine does NOT bring the hook. Running this once on a machine wires it, so the *next*
     session there auto-loads handoffs. Writes THIS file's absolute path → each machine self-
-    registers a command valid for its own home dir (no hardcoded username)."""
-    settings = pathlib.Path(os.path.expanduser("~")) / ".claude" / "settings.json"
+    registers a command valid for its own home dir (no hardcoded username); rerunning after a
+    moved skill folder repairs the stored path.
+    Matcher 'startup|clear': on resume/compact the context already carries the thread, so firing
+    there would re-inject the handoff for nothing. Pre-matcher installs are migrated in place."""
+    settings = settings or pathlib.Path(os.path.expanduser("~")) / ".claude" / "settings.json"
     cmd = f'python "{os.path.abspath(__file__)}"'
-    data = {}
-    if settings.exists():
-        try:
-            data = json.loads(settings.read_text(encoding="utf-8"))
-        except Exception:
-            print("settings.json present but unreadable — left untouched; add the hook by hand")
-            return
-    ss = data.setdefault("hooks", {}).setdefault("SessionStart", [])
-    if "load_handoff.py" in json.dumps(ss):   # match by filename → survives a moved home dir
-        print("SessionStart hook already present — nothing to do")
+    try:
+        data = json.loads(settings.read_text(encoding="utf-8")) if settings.exists() else {}
+        ss = data.setdefault("hooks", {}).setdefault("SessionStart", [])
+        for entry in ss:
+            if not isinstance(entry, dict):
+                continue
+            # match by filename → finds our entry even after a moved home dir or skill folder
+            ours = [h for h in entry.get("hooks") or [] if isinstance(h, dict)
+                    and "load_handoff.py" in (h.get("command") or "")]
+            if not ours:
+                continue
+            if entry.get("matcher") == "startup|clear" and all(h["command"] == cmd for h in ours):
+                print("SessionStart hook already present — nothing to do")
+                return
+            for h in ours:
+                h["command"] = cmd                   # repair a stale path from a moved install
+            if len(entry["hooks"]) == len(ours):
+                entry["matcher"] = "startup|clear"   # entry is only ours → matcher in place
+            else:
+                # shared entry (other commands ride in it): move our command to its own entry so
+                # the matcher does not silently restrict hooks that are not ours
+                entry["hooks"] = [h for h in entry["hooks"] if h not in ours]
+                ss.append({"matcher": "startup|clear", "hooks": ours})
+            break
+        else:
+            ss.append({"matcher": "startup|clear",
+                       "hooks": [{"type": "command", "command": cmd}]})
+        settings.parent.mkdir(parents=True, exist_ok=True)
+        settings.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    except Exception:
+        # fail closed: unreadable JSON or an unexpected shape must never corrupt settings.json
+        print("settings.json unreadable or unexpected shape — left untouched; add the hook by hand")
         return
-    ss.append({"hooks": [{"type": "command", "command": cmd}]})
-    settings.parent.mkdir(parents=True, exist_ok=True)
-    settings.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    print(f"registered SessionStart hook -> {cmd}")
+    print(f"SessionStart hook wired (matcher: startup|clear) -> {cmd}")
 
 
 def archive_current(cwd):
@@ -179,6 +201,37 @@ def _selftest():
     assert _section(sample, "Open / blockers") == "- x"   # '/' is escaped, not regex
     assert _section(sample, "Missing") == ""              # absent section → empty
     assert _section("", "Goal") == ""                     # empty input → empty
+    # ensure_hook: fresh install gets the matcher; a pre-matcher install is migrated in place.
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        s = pathlib.Path(td) / "settings.json"
+        ensure_hook(s)
+        ss = json.loads(s.read_text(encoding="utf-8"))["hooks"]["SessionStart"]
+        assert ss[0]["matcher"] == "startup|clear", ss
+        del ss[0]["matcher"]
+        s.write_text(json.dumps({"hooks": {"SessionStart": ss}}), encoding="utf-8")
+        ensure_hook(s)
+        ss = json.loads(s.read_text(encoding="utf-8"))["hooks"]["SessionStart"]
+        assert len(ss) == 1 and ss[0]["matcher"] == "startup|clear", ss
+        ensure_hook(s)  # third run: already correct → no-op
+        # shared pre-matcher entry: our command moves to its own entry, the rider stays unrestricted
+        rider = {"type": "command", "command": "python other.py"}
+        shared = {"hooks": [ss[0]["hooks"][0], rider]}
+        s.write_text(json.dumps({"hooks": {"SessionStart": [shared]}}), encoding="utf-8")
+        ensure_hook(s)
+        ss = json.loads(s.read_text(encoding="utf-8"))["hooks"]["SessionStart"]
+        assert ss[0]["hooks"] == [rider] and "matcher" not in ss[0], ss
+        assert ss[1]["matcher"] == "startup|clear" and "load_handoff" in json.dumps(ss[1]), ss
+        # stale command path (moved skill folder) is repaired on rerun, even with matcher present
+        ss[1]["hooks"][0]["command"] = 'python "/old/gone/load_handoff.py"'
+        s.write_text(json.dumps({"hooks": {"SessionStart": ss}}), encoding="utf-8")
+        ensure_hook(s)
+        ss = json.loads(s.read_text(encoding="utf-8"))["hooks"]["SessionStart"]
+        assert ss[1]["hooks"][0]["command"] == f'python "{os.path.abspath(__file__)}"', ss
+        # unexpected shape (valid JSON, wrong structure) → fail closed, file untouched
+        s.write_text('{"hooks": null}', encoding="utf-8")
+        ensure_hook(s)
+        assert s.read_text(encoding="utf-8") == '{"hooks": null}'
     print("selftest ok")
 
 
@@ -217,7 +270,11 @@ def main():
     if f.exists():
         txt = f.read_text(encoding="utf-8").strip()
         if txt:
-            print("# Resuming from saved handoff (written by /handoff). Continue from here:\n")
+            age = (datetime.datetime.now()
+                   - datetime.datetime.fromtimestamp(f.stat().st_mtime)).days
+            # age > 0 guard: a future mtime (clock skew, sync) must not print "-1 days ago"
+            when = f"{age} days ago — verify against live state" if age > 0 else "by /handoff"
+            print(f"# Resuming from saved handoff (written {when}). Continue from here:\n")
             print(txt)
 
 

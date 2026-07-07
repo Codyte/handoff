@@ -19,14 +19,16 @@ Python 3 (standard library only — no `pip install`).
 
 ## Install the boot hook (once per machine)
 
-The skill only *writes* handoffs; this hook is what *reads* them back at the start of each session.
+The skill only *writes* handoffs; this hook is what *reads* them back at startup and after `/clear`
+(matcher `startup|clear` — on resume/compact the context already carries the thread, so it stays out).
 
 ```
 python load_handoff.py --ensure-hook
 ```
 
-Idempotent: registers the `SessionStart` hook in `~/.claude/settings.json` only if missing, using
-this machine's own absolute path. No-op if already installed.
+Idempotent: registers the `SessionStart` hook in `~/.claude/settings.json`, using this machine's
+own absolute path. Rerunning migrates older installs (adds the matcher, repairs a moved path);
+no-op if already correct.
 
 ## Usage
 
