@@ -83,5 +83,15 @@ of them, verify against live state (git/.env/etc.) — a handoff reflects the mo
   `archive/` (`<repo>/.handoff/archive/` in a repo; `~/.claude/handoff/archive/<project>/`
   globally) — one timestamped file each, read on demand, never injected, so full history costs
   zero boot tokens. Prune old archive files freely.
+- **New machine / portability:** the handoff *files* travel with the repo — `<repo>/.handoff/`
+  (active + `archive/`) is versioned, so a clone carries the full state. What does **not** travel is
+  the auto-load **hook**: it lives in that machine's `~/.claude/settings.json`. So on a fresh machine
+  run step 0 (`--ensure-hook`) **once** — from then on every repo with a `.handoff/` auto-resumes.
+  That first run is the only setup; before it, a clone's handoff is still readable by hand
+  (`--open` / just open `.handoff/active.md`), it just isn't injected at boot yet.
+  (A committed *per-project* hook was considered and rejected: Claude Code prompts you to trust a
+  cloned repo's hooks anyway, so it would not save that one-time setup — it would only move it from
+  one command to one trust prompt, per clone instead of per machine — while adding a reader script
+  and a double-injection guard to every repo. Net loss.)
 - This does NOT run `/clear` for you (the agent cannot invoke built-in commands). It prepares the
   resume so that when *you* run `/clear`, nothing is lost.
