@@ -64,6 +64,14 @@ def handoff_file(cwd):
     return d / (_key(cwd) + ".md")
 
 
+def track_files(cwd):
+    """Per-track handoffs (`track1.md`, `track2.md`, …) next to the active one, when the work was
+    split across agents that run at the same time. Empty list = ordinary single-track handoff.
+    Only active.md is auto-loaded at boot; it routes each agent to its own track file."""
+    d = handoff_file(cwd).parent
+    return sorted(d.glob("track*.md"))
+
+
 def _archive_dir(cwd):
     base = handoff_file(cwd).parent
     # global store mixes every project → keep per-project subfolders; a project-local store is
@@ -135,11 +143,20 @@ def archive_current(cwd):
     txt = active.read_text(encoding="utf-8").strip()
     if not txt:  # empty stub — nothing worth keeping
         return None
+    # Track files are part of the same handoff: fold them into the one archived file, then drop
+    # them. Leaving them behind would strand a stale track the next router no longer points at.
+    tracks = track_files(cwd)
+    for t in tracks:
+        body = t.read_text(encoding="utf-8").strip()
+        if body:
+            txt += f"\n\n<!-- ===== {t.name} ===== -->\n\n{body}"
     arc_dir = _archive_dir(cwd)
     arc_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.datetime.now().strftime("%Y-%m-%dT%H%M%S")
     dest = arc_dir / (stamp + ".md")
     dest.write_text(txt + "\n", encoding="utf-8")
+    for t in tracks:
+        t.unlink()
     return dest
 
 
@@ -173,10 +190,16 @@ def history(cwd):
 def open_items(cwd):
     """The live TODO: Next steps + Open/blockers of the ACTIVE handoff — current pending state in
     one read. Reflects when the handoff was written; cross-check against live state (git/.env)."""
+    def pending(txt, label=""):
+        pre = f"[{label}] " if label else ""
+        return [f"**{pre}{h}:**\n{b}" for h in ("Next steps", "Open / blockers")
+                if (b := _section(txt, h))]
+
     f = handoff_file(cwd)
-    txt = f.read_text(encoding="utf-8") if f.exists() else ""
-    parts = [f"**{h}:**\n{b}" for h in ("Next steps", "Open / blockers")
-             if (b := _section(txt, h))]
+    parts = pending(f.read_text(encoding="utf-8") if f.exists() else "")
+    # a split handoff keeps the real TODO in the track files; active.md is just the router
+    for t in track_files(cwd):
+        parts += pending(t.read_text(encoding="utf-8"), t.stem)
     return "\n\n".join(parts) or "(no active handoff, or nothing open)"
 
 
@@ -232,6 +255,21 @@ def _selftest():
         s.write_text('{"hooks": null}', encoding="utf-8")
         ensure_hook(s)
         assert s.read_text(encoding="utf-8") == '{"hooks": null}'
+    # split mode: --open reaches into the track files, --archive folds them in and clears them
+    with tempfile.TemporaryDirectory() as td:
+        (pathlib.Path(td) / ".git").mkdir()      # repo-local store, not the global one
+        d = pathlib.Path(td) / ".handoff"
+        d.mkdir()
+        (d / "active.md").write_text("# H\n## Goal\nrouter\n", encoding="utf-8")
+        (d / "track1.md").write_text("# T1\n## Next steps\n1. portal\n", encoding="utf-8")
+        (d / "track2.md").write_text("# T2\n## Open / blockers\n- none\n", encoding="utf-8")
+        assert sorted(f.name for f in track_files(td)) == ["track1.md", "track2.md"]
+        out = open_items(td)
+        assert "[track1] Next steps" in out and "[track2] Open / blockers" in out, out
+        arc = archive_current(td)
+        body = arc.read_text(encoding="utf-8")
+        assert "1. portal" in body and "- none" in body, body   # tracks folded into the archive
+        assert not track_files(td)                              # …and cleared, never stranded
     print("selftest ok")
 
 
