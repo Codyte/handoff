@@ -74,7 +74,8 @@ can hand off to two agents running side by side. The user starts each one with "
   must stay small. It says which track file to read, carries the state both agents need (HEAD,
   environment, decisions already taken, hard rules), and nothing else.
 - `track1.md`, `track2.md` — one per agent, same sections as the normal format (so `--open` still
-  parses them) plus a **Territory** section: files it writes, files it must not touch.
+  parses them) plus a **Territory** section (files it writes, files it must not touch) and a
+  **Done** line the agent fills in when it finishes — that's what tells the merging track it can go.
 - `--archive` folds the track files into the one archived handoff and removes them, so a later
   single-track handoff can't strand a track nobody routes to.
 
@@ -96,6 +97,24 @@ the section each owns and require a re-read immediately before the edit.
 **Don't split when**: the parts are sequential (2 needs 1's output), both need the exclusive
 resource, or either half is under ~a session of work — the coordination costs more than it buys.
 Skip it and write one handoff.
+
+### Closing a split (write this protocol into `active.md`, both agents need it at boot)
+
+A track that finishes does **not** write `active.md` — two agents overwriting the router is exactly
+the clobber the split was designed to avoid. Instead:
+
+1. **Each track, when done**, appends its outcome to its own `trackN.md` (what shipped, what was
+   dropped and why, what the next session needs) and commits it. Then it stops and says so.
+2. **One track owns the merge** — name it in `active.md`, same single-owner logic as the resource;
+   track 1 by default. It merges only after the other's file says it is done.
+3. **At merge time the "don't read the other track" rule lifts** — merging requires reading both.
+   The merging agent runs `/handoff` normally: `--archive` folds both track files into one archived
+   handoff and clears them, then it writes a fresh single `active.md` from both outcomes.
+4. **Then `/clear` and start one fresh session** off that handoff. Don't keep talking to either
+   old agent: their context is half the picture, and the merged handoff already carries the whole.
+
+If one track stalls or gets abandoned, the other still merges — it records the stalled track's state
+as an open item instead of waiting.
 
 ## Navigate the history
 
