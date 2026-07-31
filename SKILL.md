@@ -35,6 +35,8 @@ on the next session, so after `/clear` you continue from exactly where you left 
    transcript. Overwrite it (idempotent; one active handoff per project). Splitting the work
    across two agents that run at the same time → see **Split mode** below.
 4. Tell the user it's saved and they can now `/clear`; the next session resumes automatically.
+5. **Close with an effort recommendation** for step 1 of *Next steps* — see below. Name the model
+   actually in use (the resume session inherits it), so the user can dial it before continuing.
 
 ## Format (keep under ~80 lines — a resume cue, not a log)
 
@@ -47,22 +49,59 @@ on the next session, so after `/clear` you continue from exactly where you left 
 ## State
 - HEAD: <`git rev-parse --short HEAD` at write time — on resume, compare against the current one
   to detect drift; omit outside a repo>
+- Live state: <anything the resume inherits but cannot see: which app/file/project is open, what is
+  running or deployed, a device or account left in a non-default mode, data already written.
+  Skip the line when there is none — but check first; this is the state no diff records>
 - Done: <what's finished>
 - In progress: <what's mid-flight, and exactly where>
 
 ## Decisions (and why)
 - <decision> — <reason>
+- <what was tried and rejected — with the reason it failed. Without this the resume re-walks dead
+  ends at full price; a rejected path is worth as much as a chosen one>
 
 ## Next steps (ordered)
 1. <next concrete action>
 2. ...
 
 ## Key files
-- <path:line> — <what's there>
+- <path:line — or URL, doc, ticket, dataset, sheet: whatever the work actually lives in> — <what's there>
 
 ## Open / blockers
 - <questions or blockers, if any>
+
+## Effort
+<low|medium|high> for step 1 — <reason>. Raise if <trigger>.
 ```
+
+## Effort recommendation
+
+Reasoning is the one cost `/clear` does **not** cut: a fresh session with a heavy default burns
+thinking on work that doesn't need it. Say it in **both** places — they do different jobs:
+
+- **In the file** (`## Effort`, one line). Survives the `/clear`; the resuming session reads it and
+  can hold itself to that depth even if the harness level was never touched.
+- **In the closing message**, naming the model actually in use (the resume inherits it). Only the
+  user can dial the harness setting, and only before they continue — so it has to be said out loud,
+  not just filed.
+
+Rules:
+- **Judge step 1 of Next steps, not the session that just ended.** A hard debugging session often
+  hands off to mechanical work, and vice versa.
+- **Lowest rung that plausibly works.** Mechanical edits, applying a decision already taken, running
+  a documented sequence, flattening output → low. Normal implementation with edge cases → medium.
+  Only genuine unknowns earn high: an API behaving against its docs, irreversible or
+  wide-blast-radius changes, a design choice not yet made.
+- **The floor is comprehension, never the diff.** Low effort must still buy reading the flow the
+  change touches and every caller of what it edits. If step 1 touches something widely called,
+  medium — "it's one line" is not a reason to go lower. Cheap thinking is fine; cheap *reading* is
+  how a confident wrong fix ships.
+- **Name the escalation trigger**, so the next session can raise it mid-flight instead of paying up
+  front: "high if X's error contradicts its docs".
+- **Say when reasoning isn't the bottleneck at all** — if the loop is dominated by builds, network,
+  a device, or a slow test suite, more thinking buys nothing. Say so in the same line.
+- **Write it in the language the user speaks**, both in the file and in the message.
+- Split mode → one recommendation per track, since the tracks rarely need the same level.
 
 ## Split mode — two agents at once (optional)
 
