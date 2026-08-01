@@ -8,25 +8,48 @@ Two modes:
                                        handoff exists for that project, print it. A SessionStart
                                        hook's stdout is injected as context, so the next session
                                        (after /clear) resumes from the saved state automatically.
+  python load_handoff.py --check-context -> HOOK mode (UserPromptSubmit): computes the handoff
+                                       breakeven from the transcript and nudges once a handoff
+                                       starts paying for itself. Silent otherwise (zero tokens).
+  python load_handoff.py --context  -> print that breakeven for the current session, by hand.
 
 Handoff files live in <repo>/.handoff/active.md when cwd is inside a git repo (versioned with the
 project), else under ~/.claude/handoff/<sanitized-project-path>.md (per machine).
 """
 # ====================== BEGIN NAV INDEX ======================
 # NAV INDEX — auto-generated symbol map (refresh via the navindex skill)
-#   L41    _key
-#   L45    _git_root
-#   L55    handoff_file
-#   L67    _archive_dir
-#   L74    _archive_files
-#   L81    ensure_hook
-#   L128   archive_current
-#   L146   _section
-#   L153   history
-#   L173   open_items
-#   L183   grep
-#   L195   _selftest
-#   L238   main
+#   L64    _key
+#   L68    _git_root
+#   L78    handoff_file
+#   L90    track_files
+#   L98    _archive_dir
+#   L105   _archive_files
+#   L112   _wire
+#   L147   ensure_hook
+#   L172   CTX_WARN_AT
+#   L173   CTX_WARN_STEP
+#   L174   TURNS_WARN
+#   L175   BOOT_FALLBACK
+#   L176   HANDOFF_OUT
+#   L177   REDERIVE
+#   L181   _PRICES
+#   L186   prices
+#   L197   _usage_lines
+#   L218   _tail
+#   L229   _head
+#   L237   context_tokens
+#   L244   boot_context
+#   L252   breakeven
+#   L277   spawn_session
+#   L303   _warn_state
+#   L320   check_context
+#   L341   archive_current
+#   L368   _section
+#   L375   history
+#   L395   open_items
+#   L411   grep
+#   L423   _selftest
+#   L510   main
 # ======================= END NAV INDEX =======================
 
 import sys, os, json, re, pathlib, datetime
@@ -86,51 +109,233 @@ def _archive_files(cwd):
     return sorted(arc_dir.glob("*.md")) if arc_dir.exists() else []
 
 
+def _wire(data, event, matcher, cmd):
+    """Idempotently put `cmd` in hooks.<event>, under `matcher` (None = no matcher key).
+    Returns a short status string. Mutates `data`."""
+    ss = data.setdefault("hooks", {}).setdefault(event, [])
+    for entry in ss:
+        if not isinstance(entry, dict):
+            continue
+        # match by filename+flags → finds our entry even after a moved home dir or skill folder
+        ours = [h for h in entry.get("hooks") or [] if isinstance(h, dict)
+                and "load_handoff.py" in (h.get("command") or "")
+                and ("--check-context" in h["command"]) == ("--check-context" in cmd)]
+        if not ours:
+            continue
+        if entry.get("matcher") == matcher and all(h["command"] == cmd for h in ours):
+            return f"{event}: already present"
+        for h in ours:
+            h["command"] = cmd                   # repair a stale path from a moved install
+        if len(entry["hooks"]) == len(ours):
+            if matcher is None:
+                entry.pop("matcher", None)
+            else:
+                entry["matcher"] = matcher       # entry is only ours → matcher in place
+        else:
+            # shared entry (other commands ride in it): move our command to its own entry so
+            # the matcher does not silently restrict hooks that are not ours
+            entry["hooks"] = [h for h in entry["hooks"] if h not in ours]
+            ss.append({"hooks": ours} if matcher is None else {"matcher": matcher, "hooks": ours})
+        return f"{event}: repaired"
+    new = {"hooks": [{"type": "command", "command": cmd}]}
+    if matcher is not None:
+        new["matcher"] = matcher
+    ss.append(new)
+    return f"{event}: wired"
+
+
 def ensure_hook(settings=None):
-    """Idempotently register the SessionStart hook that injects the active handoff at boot.
-    The skill (writer) and this hook (reader) are separate pieces; copying the skill folder to a
-    new machine does NOT bring the hook. Running this once on a machine wires it, so the *next*
-    session there auto-loads handoffs. Writes THIS file's absolute path → each machine self-
-    registers a command valid for its own home dir (no hardcoded username); rerunning after a
-    moved skill folder repairs the stored path.
-    Matcher 'startup|clear': on resume/compact the context already carries the thread, so firing
-    there would re-inject the handoff for nothing. Pre-matcher installs are migrated in place."""
+    """Idempotently register the two hooks this skill needs:
+      SessionStart (matcher startup|clear) → injects the active handoff at boot.
+      UserPromptSubmit --check-context     → nudges to /handoff once context gets expensive.
+    The skill (writer) and these hooks (readers) are separate pieces; copying the skill folder to a
+    new machine does NOT bring them. Running this once on a machine wires them. Writes THIS file's
+    absolute path → each machine self-registers a command valid for its own home dir (no hardcoded
+    username); rerunning after a moved skill folder repairs the stored path.
+    SessionStart matcher: on resume/compact the context already carries the thread, so firing there
+    would re-inject the handoff for nothing. Pre-matcher installs are migrated in place."""
     settings = settings or pathlib.Path(os.path.expanduser("~")) / ".claude" / "settings.json"
-    cmd = f'python "{os.path.abspath(__file__)}"'
+    base = f'python "{os.path.abspath(__file__)}"'
     try:
         data = json.loads(settings.read_text(encoding="utf-8")) if settings.exists() else {}
-        ss = data.setdefault("hooks", {}).setdefault("SessionStart", [])
-        for entry in ss:
-            if not isinstance(entry, dict):
-                continue
-            # match by filename → finds our entry even after a moved home dir or skill folder
-            ours = [h for h in entry.get("hooks") or [] if isinstance(h, dict)
-                    and "load_handoff.py" in (h.get("command") or "")]
-            if not ours:
-                continue
-            if entry.get("matcher") == "startup|clear" and all(h["command"] == cmd for h in ours):
-                print("SessionStart hook already present — nothing to do")
-                return
-            for h in ours:
-                h["command"] = cmd                   # repair a stale path from a moved install
-            if len(entry["hooks"]) == len(ours):
-                entry["matcher"] = "startup|clear"   # entry is only ours → matcher in place
-            else:
-                # shared entry (other commands ride in it): move our command to its own entry so
-                # the matcher does not silently restrict hooks that are not ours
-                entry["hooks"] = [h for h in entry["hooks"] if h not in ours]
-                ss.append({"matcher": "startup|clear", "hooks": ours})
-            break
-        else:
-            ss.append({"matcher": "startup|clear",
-                       "hooks": [{"type": "command", "command": cmd}]})
+        msgs = [_wire(data, "SessionStart", "startup|clear", base),
+                _wire(data, "UserPromptSubmit", None, base + " --check-context")]
         settings.parent.mkdir(parents=True, exist_ok=True)
         settings.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     except Exception:
         # fail closed: unreadable JSON or an unexpected shape must never corrupt settings.json
-        print("settings.json unreadable or unexpected shape — left untouched; add the hook by hand")
+        print("settings.json unreadable or unexpected shape — left untouched; add the hooks by hand")
         return
-    print(f"SessionStart hook wired (matcher: startup|clear) -> {cmd}")
+    print(" | ".join(msgs) + f" -> {base}")
+
+
+CTX_WARN_AT = 120_000        # floor: below this a nudge is noise even if breakeven says otherwise
+CTX_WARN_STEP = 20_000       # re-warn only after this much further growth (one nudge per band)
+TURNS_WARN = 8               # nudge once handoff pays for itself within this many remaining turns
+BOOT_FALLBACK = 20_000       # assumed post-/clear context when this project has no measured one
+HANDOFF_OUT = 2_000          # output tokens the handoff turn itself writes
+REDERIVE = 8_000             # tokens the fresh session re-reads to get back on the thread (cache-write)
+
+# USD per token: cache-read / cache-write / output. Matched by substring of the model id, same
+# table the cache widget bills from — read its prices.json when present so there is one source.
+_PRICES = {"opus":   {"cr": 1.50, "cw": 18.75, "out": 75.0},
+           "sonnet": {"cr": 0.30, "cw": 3.75,  "out": 15.0},
+           "haiku":  {"cr": 0.10, "cw": 1.25,  "out": 5.0}}
+
+
+def prices(model):
+    try:
+        p = pathlib.Path(os.path.expanduser("~")) / ".claude" / "claude-cache-widget" / "prices.json"
+        table = json.loads(p.read_text(encoding="utf-8")).get("models") or _PRICES
+    except Exception:
+        table = _PRICES
+    row = next((v for k, v in table.items() if k in str(model or "").lower()), None) \
+        or table.get("opus") or next(iter(table.values()))
+    return {k: row[k] / 1e6 for k in ("cr", "cw", "out")}
+
+
+def _usage_lines(text):
+    """(input-side tokens, model) per non-sidechain assistant turn in `text`, in file order."""
+    out = []
+    for line in text.splitlines():
+        if '"usage"' not in line:
+            continue
+        try:
+            obj = json.loads(line)
+            if obj.get("isSidechain"):        # sub-agent turns have their own context
+                continue
+            msg = obj.get("message") or {}
+            u = msg.get("usage") or {}
+            n = sum(int(u.get(k) or 0) for k in
+                    ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
+            if n:
+                out.append((n, msg.get("model")))
+        except Exception:
+            continue
+    return out
+
+
+def _tail(path, nbytes=262_144):
+    """Last nbytes of a file as text — transcripts get large and this runs on every prompt."""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            f.seek(max(0, f.tell() - nbytes))
+            return f.read().decode("utf-8", "replace")
+    except Exception:
+        return ""
+
+
+def _head(path, nbytes=262_144):
+    try:
+        with open(path, "rb") as f:
+            return f.read(nbytes).decode("utf-8", "replace")
+    except Exception:
+        return ""
+
+
+def context_tokens(transcript):
+    """Current context size in tokens = the last assistant turn's input side (fresh + cached).
+    Read from the real usage numbers the transcript records, same source the cache widget uses."""
+    lines = _usage_lines(_tail(transcript))
+    return lines[-1][0] if lines else None
+
+
+def boot_context(transcript):
+    """What a /clear here restarts from: this session's own FIRST assistant turn (system prompt +
+    skills + any injected handoff). Head of the same file we already read — no scan of past
+    sessions; a rough number in the right order of magnitude is all the breakeven needs."""
+    lines = _usage_lines(_head(transcript, 131_072))
+    return lines[0][0] if lines else BOOT_FALLBACK
+
+
+def breakeven(transcript):
+    """How many more turns of work must remain for /handoff + /clear to be cheaper than continuing.
+
+    Per turn, continuing re-sends the whole context: ctx x cache-read. After a handoff the same
+    turn costs boot x cache-read, so each turn saves (ctx - boot) x cache-read. Growth per turn
+    happens on both sides and cancels. Against that saving stands the one-off cost of the switch:
+    the handoff turn itself (read the full context + write the file) plus what the fresh session
+    re-reads to get back on the thread.
+        turns = (ctx*cr + HANDOFF_OUT*out + REDERIVE*cw) / ((ctx - boot) * cr)
+    Fewer turns remaining than that -> finishing here is the cheap move, however big the context."""
+    lines = _usage_lines(_tail(transcript))
+    if not lines:
+        return None
+    ctx, model = lines[-1]
+    boot = boot_context(transcript)
+    p = prices(model)
+    if ctx <= boot:
+        return None
+    cost = ctx * p["cr"] + HANDOFF_OUT * p["out"] + REDERIVE * p["cw"]
+    saving = (ctx - boot) * p["cr"]
+    return {"ctx": ctx, "boot": boot, "model": model or "?",
+            "turns": max(1, round(cost / saving)),
+            "usd_per_turn_saved": round(saving, 4)}
+
+
+def spawn_session(cwd=None):
+    """Open a NEW Claude Code session in `cwd`, in its own console window. The SessionStart hook
+    injects the handoff there, so it boots on the thread. This is the closest thing to an automatic
+    /clear: the harness's own commands are not callable from a skill or a hook, so the old session
+    has to be ended by the user — but the new one is already up and warm."""
+    import shutil, subprocess
+    if os.environ.get("CLAUDE_CODE_ENTRYPOINT") == "claude-vscode":
+        # In the VS Code extension a spawned console would be a *different* UI, not a new tab in
+        # the one being used — and VS Code exposes no way to fire an extension command from
+        # outside. So hand the user the one keystroke that does it there.
+        return ("running in the VS Code extension — spawning a console session would land outside "
+                "this UI. Open the next one with Ctrl+Shift+P > 'Claude Code: New Conversation' "
+                "(or 'Open in New Tab'); it boots with the handoff. Bind claude-vscode."
+                "newConversation to a key to make it one keystroke.")
+    exe = shutil.which("claude")
+    if not exe:
+        return "claude not found on PATH — start the new session by hand"
+    cwd = cwd or os.getcwd()
+    try:
+        flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)   # 0 on POSIX → same terminal
+        subprocess.Popen([exe], cwd=cwd, creationflags=flags, close_fds=True)
+    except Exception as e:
+        return f"could not spawn a session ({e}) — start it by hand"
+    return f"new session started in {cwd} — it boots with the handoff; /clear or close this one"
+
+
+def _warn_state(session, band=None):
+    """Last warned band per session, in ~/.claude/.handoff_ctx_warn. Read with band=None."""
+    p = pathlib.Path(os.path.expanduser("~")) / ".claude" / ".handoff_ctx_warn"
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        data = {}
+    if band is None:
+        return data.get(session, 0)
+    try:
+        # keep the file from growing forever: only the 20 most recent sessions
+        data[session] = band
+        p.write_text(json.dumps(dict(list(data.items())[-20:])), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def check_context(payload):
+    """UserPromptSubmit hook: nudge when a handoff would pay for itself soon. Silent (zero tokens)
+    below the floor, above the breakeven horizon, and inside an already-warned band — so the
+    reminder lands once per 20k of growth, not on every prompt. Advisory: it never blocks."""
+    b = breakeven(payload.get("transcript_path") or "")
+    if not b or b["ctx"] < CTX_WARN_AT or b["turns"] > TURNS_WARN:
+        return
+    band = b["ctx"] // CTX_WARN_STEP
+    session = payload.get("session_id") or "?"
+    if band <= _warn_state(session):
+        return
+    _warn_state(session, band)
+    print(f"# Context checkpoint (advisory, not a stop): ~{b['ctx']//1000}k tokens, "
+          f"${b['usd_per_turn_saved']:.2f}/turn wasted vs a fresh session "
+          f"(boot here measures ~{b['boot']//1000}k).\n"
+          f"/handoff + /clear pays for itself if MORE THAN ~{b['turns']} turns of work remain.\n"
+          f"Answer the user first, then say in one line: fewer turns left than that → finish the\n"
+          f"goal, then /handoff; more → suggest /handoff + /clear now. Never abandon work in\n"
+          f"flight for this — it is a cost hint, never a reason to refuse or pause a task.")
 
 
 def archive_current(cwd):
@@ -231,6 +436,8 @@ def _selftest():
         ensure_hook(s)
         ss = json.loads(s.read_text(encoding="utf-8"))["hooks"]["SessionStart"]
         assert ss[0]["matcher"] == "startup|clear", ss
+        ups = json.loads(s.read_text(encoding="utf-8"))["hooks"]["UserPromptSubmit"]
+        assert "matcher" not in ups[0] and "--check-context" in ups[0]["hooks"][0]["command"], ups
         del ss[0]["matcher"]
         s.write_text(json.dumps({"hooks": {"SessionStart": ss}}), encoding="utf-8")
         ensure_hook(s)
@@ -270,6 +477,33 @@ def _selftest():
         body = arc.read_text(encoding="utf-8")
         assert "1. portal" in body and "- none" in body, body   # tracks folded into the archive
         assert not track_files(td)                              # …and cleared, never stranded
+    # context_tokens: last non-sidechain usage line wins, all three input fields summed
+    with tempfile.TemporaryDirectory() as td:
+        t = pathlib.Path(td) / "t.jsonl"
+        t.write_text(
+            json.dumps({"message": {"usage": {"input_tokens": 1}}}) + "\n"
+            + json.dumps({"message": {"usage": {"input_tokens": 5, "cache_read_input_tokens": 90,
+                                               "cache_creation_input_tokens": 5,
+                                               "output_tokens": 999}}}) + "\n"
+            + json.dumps({"isSidechain": True,
+                          "message": {"usage": {"input_tokens": 77}}}) + "\n",
+            encoding="utf-8")
+        assert context_tokens(t) == 100, context_tokens(t)       # output_tokens excluded
+        assert context_tokens(pathlib.Path(td) / "nope.jsonl") is None
+    # breakeven: more context → fewer remaining turns needed for a handoff to pay off; and a
+    # context barely above boot never pays off (guarded, no divide-by-~0 blowup)
+    with tempfile.TemporaryDirectory() as td:
+        def mk(name, ctx):
+            def row(n):
+                return json.dumps({"message": {"model": "claude-opus-5",
+                                               "usage": {"cache_read_input_tokens": n}}})
+            p = pathlib.Path(td) / name
+            p.write_text(row(20_000) + "\n" + row(ctx) + "\n", encoding="utf-8")
+            return breakeven(p)
+        big, small = mk("a.jsonl", 200_000), mk("b.jsonl", 120_000)
+        assert big["boot"] == 20_000, big                   # first turn of the session, not last
+        assert 1 <= big["turns"] < small["turns"], (big, small)
+        assert mk("c.jsonl", 20_000) is None                # at boot → nothing left to save
     print("selftest ok")
 
 
@@ -297,6 +531,29 @@ def main():
         return
     if "--history" in sys.argv:
         print(history(os.getcwd()))
+        return
+    if "--spawn" in sys.argv:
+        print(spawn_session())
+        return
+    if "--check-context" in sys.argv:
+        try:
+            payload = json.load(sys.stdin)
+        except Exception:
+            payload = {}
+        check_context(payload)
+        return
+    if "--context" in sys.argv:
+        # manual read: newest transcript of this project (the current session)
+        slug = re.sub(r"[^A-Za-z0-9]", "-", os.path.abspath(os.getcwd()))
+        d = pathlib.Path(os.path.expanduser("~")) / ".claude" / "projects" / slug
+        files = sorted(d.glob("*.jsonl"), key=lambda p: p.stat().st_mtime) if d.exists() else []
+        b = breakeven(files[-1]) if files else None
+        if not b:
+            print("(no transcript usage found)")
+            return
+        print(f"context {b['ctx']} tokens | boot here ~{b['boot']} | {b['model']}\n"
+              f"${b['usd_per_turn_saved']:.3f} wasted per further turn vs a fresh session\n"
+              f"breakeven: /handoff + /clear wins if more than ~{b['turns']} turns of work remain")
         return
     # HOOK mode: cwd comes from the SessionStart payload on stdin (fallback to process cwd).
     cwd = os.getcwd()

@@ -11,15 +11,16 @@ on the next session, so after `/clear` you continue from exactly where you left 
 
 ## Steps
 
-0. **Ensure the boot hook is installed** (makes the skill self-sufficient on a fresh machine —
-   the skill only *writes*; this hook is what *reads* the handoff back at boot):
+0. **Ensure the hooks are installed** (makes the skill self-sufficient on a fresh machine —
+   the skill only *writes*; the hooks are what *read* the handoff back and watch the context):
    ```
    python "$HOME/.claude/skills/handoff/load_handoff.py" --ensure-hook
    ```
-   Idempotent: registers the `SessionStart` hook in `~/.claude/settings.json` only if missing,
-   using this machine's own absolute path. The hook fires only on `startup|clear` — on
-   resume/compact the context already carries the thread, so injecting there would waste tokens.
-   Older installs without the matcher are migrated in place. No-op if already correct.
+   Idempotent: registers both hooks in `~/.claude/settings.json` only if missing, using this
+   machine's own absolute path. `SessionStart` (matcher `startup|clear`) injects the handoff at
+   boot — on resume/compact the context already carries the thread, so injecting there would waste
+   tokens. `UserPromptSubmit --check-context` is the context checkpoint below. Older installs are
+   migrated in place. No-op if already correct.
 1. Get the target path (keeps skill + hook in sync):
    ```
    python "$HOME/.claude/skills/handoff/load_handoff.py" --path
@@ -35,6 +36,18 @@ on the next session, so after `/clear` you continue from exactly where you left 
    transcript. Overwrite it (idempotent; one active handoff per project). Splitting the work
    across two agents that run at the same time → see **Split mode** below.
 4. Tell the user it's saved and they can now `/clear`; the next session resumes automatically.
+   With **`/handoff -f`** (fast handoff), also run
+   ```
+   python "$HOME/.claude/skills/handoff/load_handoff.py" --spawn
+   ```
+   after writing the file: it opens a new Claude Code session in this same directory, which boots
+   with the handoff via the `SessionStart` hook. Then tell the user to `/clear` or close this one —
+   a skill cannot invoke the harness's own commands, so ending the old session stays manual; `-f`
+   only removes the "start the next one and wait for it to load" half. Skip `-f` when the work is
+   not actually continuing right now (nothing to resume into).
+   **In the VS Code extension** (`CLAUDE_CODE_ENTRYPOINT=claude-vscode`) a spawned console would be
+   a different UI, and VS Code cannot fire an extension command from outside — so `--spawn` prints
+   the keystroke instead (`Ctrl+Shift+P` > *Claude Code: New Conversation*). Relay it as-is.
 5. **Close with an effort recommendation** for step 1 of *Next steps* — see below. Name the model
    actually in use (the resume session inherits it), so the user can dial it before continuing.
 
@@ -66,13 +79,75 @@ on the next session, so after `/clear` you continue from exactly where you left 
 
 ## Key files
 - <path:line — or URL, doc, ticket, dataset, sheet: whatever the work actually lives in> — <what's there>
+- <the `__navi__.md` of each folder the next steps touch — one read orients the resuming session
+  instead of a blind grep sweep; regenerate it first if this session moved symbols around>
 
 ## Open / blockers
 - <questions or blockers, if any>
 
+## Skills
+- <skill name to auto-inject next session — omit the whole section to keep the machine defaults>
+- -<name> <— a leading dash removes a default instead of adding one>
+
 ## Effort
 <low|medium|high> for step 1 — <reason>. Raise if <trigger>.
 ```
+
+## Context checkpoint (automatic)
+
+Cost per turn is the whole context re-sent, so a long session gets expensive well before it hits any
+limit. But a big context is **not** by itself a reason to hand off: what decides is how much work is
+left. The right question is a breakeven, not a threshold.
+
+```
+saving per turn = (ctx - boot) x cache-read price      # what a fresh session would not re-send
+one-off cost    = ctx x cache-read                     # the handoff turn reads the full context
+                + handoff output + what the fresh session re-reads to get back on the thread
+breakeven       = one-off cost / saving per turn       # in turns of work still remaining
+```
+
+Growth per turn happens on both sides and cancels, so it drops out. Typical opus numbers with a
+~20k boot: **200k → ~2-3 turns, 120k → ~3-5, 80k → ~5-8**. So 200k with the goal one turn away →
+*continue*; 120k with a day of work left → hand off. Sonnet's cache-read is 5x cheaper, so its
+breakeven is 5x further out — the model in use is part of the answer.
+
+The `UserPromptSubmit` hook computes this every prompt and stays **silent** (zero tokens) unless
+context is past `CTX_WARN_AT` **and** the breakeven has fallen to `TURNS_WARN` turns or fewer, and
+then only once per 20k of further growth. It is **advisory**: it never blocks a prompt, never pauses
+work in flight. The request is answered first, then the agent says in one line which applies —
+fewer turns left than the breakeven → finish the goal, then `/handoff`; more → `/handoff` + `/clear`
+now.
+
+Read it by hand with `load_handoff.py --context`:
+
+```
+context 99096 tokens | boot here ~40957 | claude-opus-5
+USD 0.087 wasted per further turn vs a fresh session   (printed with a $ sign; written out here
+                                                        because $0 in a skill body is substituted
+                                                        with the slash-command's argument)
+breakeven: /handoff + /clear wins if more than ~5 turns of work remain
+```
+
+**What is measured vs assumed.** From the transcript: current context, the model (→ its real prices,
+from the cache widget's `prices.json`), and `boot` — this session's own first turn, i.e. what a
+`/clear` here restarts from (system prompt + skills + injected handoff), which is 2x the usual guess
+on a machine with skills loaded. Constants in `load_handoff.py`: `HANDOFF_OUT`, `REDERIVE`. Not
+measurable at all: **how many turns of work remain** — the agent's estimate, and the only input the
+hook asks for. The aim is a healthy signal, not an accounting figure: the decision only flips when
+the estimate is off by a factor, so rough inputs are fine.
+
+## Skills for the next session (optional section)
+
+The `SessionStart` injector (`~/.claude/session_inject.py`) reads `## Skills` from the active
+handoff and stacks those on top of the machine defaults in `~/.claude/session-inject.json`. So the
+agent writing the handoff decides what the *resuming* agent boots with — one bullet per skill, bare
+name (`navindex`), resolved to `~/.claude/<name>-activate.md` or `~/.claude/skills/<name>/SKILL.md`.
+A full path works too. `- -caveman` drops a default for this project. Unknown names are ignored
+silently, so a wrong guess never blocks boot.
+
+Add a skill only when step 1 of *Next steps* actually needs it — every injected file is re-sent
+every turn. Omit the section entirely (the normal case) and the defaults apply unchanged.
+Defaults are managed separately: `python ~/.claude/session_inject.py --list|--add|--rm|--on|--off`.
 
 ## Effort recommendation
 
@@ -192,4 +267,5 @@ of them, verify against live state (git/.env/etc.) — a handoff reflects the mo
 - Handoffs are committed with the repo — never put secrets in them (tokens, passwords, `.env`
   values); reference the file that holds them instead.
 - This does NOT run `/clear` for you (the agent cannot invoke built-in commands). It prepares the
-  resume so that when *you* run `/clear`, nothing is lost.
+  resume so that when *you* run `/clear`, nothing is lost. `/handoff -f` goes one step further and
+  starts the *next* session for you (`--spawn`), but ending the current one is still your call.

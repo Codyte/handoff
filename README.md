@@ -17,18 +17,29 @@ so clearing is free.
 
 Python 3 (standard library only — no `pip install`).
 
-## Install the boot hook (once per machine)
+## Install the hooks (once per machine)
 
-The skill only *writes* handoffs; this hook is what *reads* them back at startup and after `/clear`
-(matcher `startup|clear` — on resume/compact the context already carries the thread, so it stays out).
+The skill only *writes* handoffs; the hooks are what *read* them back and watch the context.
 
 ```
 python load_handoff.py --ensure-hook
 ```
 
-Idempotent: registers the `SessionStart` hook in `~/.claude/settings.json`, using this machine's
-own absolute path. Rerunning migrates older installs (adds the matcher, repairs a moved path);
-no-op if already correct.
+Registers two hooks in `~/.claude/settings.json`, using this machine's own absolute path:
+
+- `SessionStart` (matcher `startup|clear`) — injects the active handoff at startup and after
+  `/clear`; on resume/compact the context already carries the thread, so it stays out.
+- `UserPromptSubmit --check-context` — the **context checkpoint**: computes when a handoff starts
+  paying for itself and stays silent (zero tokens) until it does. Each further turn re-sends
+  `ctx - boot` tokens a fresh session would not, so the switch is worth it once
+  `handoff cost / saving per turn` turns of work still remain — typically ~2-3 turns at 200k, ~5 at
+  120k on opus. A huge context with the goal one turn away → keep going; that is the point. Context,
+  model prices and `boot` (this session's own first turn = what a `/clear` really restarts from) come
+  from the transcript; only "how many turns remain" is the agent's estimate. Advisory — it never
+  blocks a prompt.
+
+Idempotent: rerunning migrates older installs (adds the matcher, repairs a moved path); no-op if
+already correct.
 
 ## Usage
 
@@ -41,6 +52,8 @@ The skill drives these, but the script stands alone:
 | `load_handoff.py --open` | Show Next steps + Open/blockers of the active handoff (the live TODO) |
 | `load_handoff.py --history` | Chronological digest of every archived handoff |
 | `load_handoff.py --grep <term>` | Archived handoffs mentioning `<term>`, with date + matching lines |
+| `load_handoff.py --context` | Context size, measured boot context, $/turn wasted, and the handoff breakeven in turns |
+| `load_handoff.py --spawn` | Open a new Claude Code session here, booted on the handoff (what `/handoff -f` calls). In the VS Code extension it prints the `Ctrl+Shift+P` > *New Conversation* keystroke instead — a console session there would be a different UI |
 
 ## Where files live
 

@@ -1,48 +1,60 @@
-# Handoff · handoff skill · 2026-07-07 (2ª sessão)
+# Handoff · handoff skill · 2026-07-31
 
 ## Goal
-Elevar a skill `handoff` a estado-da-arte: 3 melhorias implementadas + fixes do verify ultracode.
-Repo: `c:\Users\Carlos_Ortiz\.agents\skills\handoff`.
+Checkpoint de contexto na skill `handoff`: avisar quando handoff+clear compensa, sem travar sessão.
+Repo: `c:\Users\Carlos_Ortiz\.agents\skills\handoff` (= `.claude/skills/handoff`, junction — mesmo
+diretório).
 
 ## State
-- HEAD: 74e4a3e (mudanças desta sessão NÃO commitadas — working tree suja de propósito)
-- Done:
-  - **Matcher `startup|clear`** no hook SessionStart (`ensure_hook`): não dispara em resume/compact.
-    Docs oficiais confirmam pipe = lista de strings exatas (não regex, funciona igual). Migração
-    aplicada no settings.json real: entry compartilhado (session_inject + cache-widget) preservado
-    sem matcher; handoff em entry próprio com matcher, command reparado pro path `.agents`.
-  - **Nota de idade no boot**: handoff com mtime ≥1 dia injeta `(written N days ago — verify
-    against live state)`; guard `age > 0` evita "-1 days ago" com mtime futuro.
-  - **`HEAD:` no template** do SKILL.md (## State) pra detectar drift no resume + nota "sem secrets".
-  - Fixes do verify: reparo de command path morto em `--ensure-hook` (skill movida); fail-closed
-    em settings.json com shape inesperado (entry não-dict, command:null, hooks:null); README
-    alinhado (matcher, migração, "startup e após /clear").
-  - Selftest ampliado: _section, install fresh, migração in-place, idempotência, split de entry
-    compartilhado, reparo de path, shape inesperado. Tudo verde + smoke FUTURE/STALE/FRESH ok.
-  - navindex refeito (header 13 símbolos + __navi__.md + root tree).
+- HEAD: f65c9f4 — nada commitado (working tree acumula esta sessão **e** a de 2026-07-07: matcher
+  `startup|clear`, nota de idade no boot, `HEAD:` no template, fail-closed no settings).
+- Live state: os hooks já estão gravados no `~/.claude/settings.json` real (SessionStart + o novo
+  UserPromptSubmit). Sessão rodando na UI da extensão VS Code (`CLAUDE_CODE_ENTRYPOINT=claude-vscode`).
+- Done nesta sessão:
+  - `--check-context` (hook UserPromptSubmit) + `--context` (leitura manual). Silencioso: só fala se
+    ctx ≥ `CTX_WARN_AT` 120k **e** breakeven ≤ `TURNS_WARN` 8 turnos, 1x por banda de 20k
+    (estado em `~/.claude/.handoff_ctx_warn`). Nunca bloqueia; disparou de verdade a 123k.
+  - `breakeven()`: economia/turno = (ctx − boot) × preço cache-read; custo único = ctx×cr +
+    HANDOFF_OUT×out + REDERIVE×cw. Preços do `prices.json` do cache-widget (fallback embutido).
+  - `boot_context()`: primeiro turno da própria sessão (cabeça do transcript). Mede ~44k aqui.
+  - `_wire()` genérico: `--ensure-hook` fia os 2 hooks (migração/reparo/fail-closed preservados).
+  - `spawn_session()` / `--spawn` + `/handoff -f`: em VS Code devolve o atalho (Ctrl+Shift+P >
+    Claude Code: New Conversation); fora dele abre console novo com `claude`.
+  - Selftest verde (breakeven, context_tokens, entry UserPromptSubmit). navindex regenerado.
 - In progress: nada.
 
 ## Decisions (and why)
-- `.claude/skills/handoff` e `.agents/skills/handoff` = MESMO diretório (junction) — sem sync
-  necessário; hook e skill já rodam o código novo.
-- Migração de entry compartilhado SEPARA o comando do handoff em entry próprio — matcher in-place
-  restringiria session_inject + cache-widget silenciosamente.
-- Fail-closed (try amplo + mensagem) em vez de tolerar shapes estranhos — nunca corromper settings.
-- YAGNI rejeitados: PreCompact reminder, handoff por branch, `--prune`, `--grep` no ativo.
-- Usuário: deixar agentes em curso terminarem, **não spawnar mais agentes** (pedido explícito).
-- Não commitado — fluxo do usuário é commitar sob demanda ("commit").
+- Limiar fixo NÃO decide — decide o breakeven em turnos restantes. 200k perto do fim = continuar.
+- Crescimento por turno cancela dos dois lados da conta → fora do modelo.
+- Boot medido do próprio transcript, não mediana de 10 sessões (lia 1.2MB/prompt, mesmo resultado:
+  44k vs 41k). Pedido explícito: "saudável, não cirúrgico".
+- Bug: `boot_context` lia a CAUDA do arquivo (77k inflado) — o que interessa é a CABEÇA.
+- Bug: `$0.087` no corpo do SKILL.md virava o argumento do slash-command (saiu `--spawn.087`);
+  escrito "USD 0.087". Cuidado com `$0`/`$1` em exemplos dentro de SKILL.md.
+- `/clear` automático é impossível: skill/hook não invocam comandos do harness. A extensão VS Code
+  expõe `claude-vscode.newConversation`, mas VS Code não dispara comando de extensão por CLI e a
+  extensão não registra handler `vscode://` (activationEvents só `onStartupFinished` + webview).
+  Máximo automatizável = keybinding do usuário.
+- Rejeitados (YAGNI): calibrar REDERIVE medindo sessões pós-handoff, breakeven em output tokens,
+  contar itens de `--open` como proxy de trabalho restante.
 
 ## Next steps (ordered)
-1. Se aprovar: `git add -A && git commit` (load_handoff.py, SKILL.md, README.md, __navi__.md,
-   .handoff/; conferir se `.navindex-cache.json` está no .gitignore antes do add -A).
-2. Nada mais aberto.
+1. Keybinding opcional no `keybindings.json` do VS Code: tecla → `claude-vscode.newConversation`
+   (usuário escolhe a tecla; skill `keybindings-help` cobre o formato).
+2. `git add -A && git commit` (load_handoff.py, SKILL.md, README.md, __navi__.md, .handoff/);
+   conferir se `.navindex-cache.json` está no .gitignore antes do `-A`.
 
 ## Key files
-- load_handoff.py:81 — `ensure_hook(settings=None)`: matcher + migração + reparo de path + fail-closed.
-- load_handoff.py:238 — `main()` hook mode com nota de idade (guard `age > 0`).
-- load_handoff.py:195 — `_selftest()` com os 7 casos.
-- SKILL.md — step 0 (matcher/migração), template `HEAD:`, nota secrets.
-- README.md:20-30 — install do hook atualizado.
+- load_handoff.py:252 — `breakeven()`; :244 `boot_context()`; :277 `spawn_session()`;
+  :320 `check_context()`; :172-177 constantes (CTX_WARN_AT, TURNS_WARN, HANDOFF_OUT, REDERIVE).
+- load_handoff.py:112 — `_wire()`; :147 `ensure_hook()` (os 2 hooks).
+- SKILL.md — seção "Context checkpoint (automatic)"; step 4 com `/handoff -f` + nota VS Code.
+- __navi__.md — mapa da pasta, regenerado; ler antes de busca ampla aqui.
 
 ## Open / blockers
-- Nenhum. Mudanças aguardando "commit".
+- Nenhum. Só o commit pendente (2 sessões acumuladas).
+
+## Effort
+low para o passo 1 — editar um JSON de keybinding com a tecla que o usuário disser; passo 2 é
+mecânico. Suba para medium se o commit exigir mexer no .gitignore ou se o settings.json real
+parecer fora do lugar. Raciocínio não é o gargalo aqui.
