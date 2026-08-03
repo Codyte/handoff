@@ -73,6 +73,21 @@ on the next session, so after `/clear` you continue from exactly where you left 
 - <what was tried and rejected — with the reason it failed. Without this the resume re-walks dead
   ends at full price; a rejected path is worth as much as a chosen one>
 
+## Standing decisions (carry forward verbatim)
+<Copy this section from the previous handoff unchanged, then add or retire entries. It is the only
+section that is inherited rather than rewritten — everything else describes one session, this one
+accumulates. Keep ONLY verdicts that still constrain future work: a floor not to cross, an approach
+already rejected with a measurement behind it, a rule about where fixes go. Drop entries whose work
+is done — an executed decision is history, not a constraint. Retire an entry when reality overturns
+it, and say so in `## Decisions` that session, so the reversal is visible instead of silent.
+
+Omit the section only on the first handoff of a project. Once it exists, dropping it is the
+expensive failure: the next agent re-derives the same verdicts by reading the whole archive, which
+costs more than the section ever will. Past sessions' full decisions stay in `archive/` — reachable
+with `--grep <term>` when a specific one is needed. Do not paste them here in bulk; a dump of every
+decision ever made is larger than the context it was meant to save, and dedup does not shrink it —
+the same verdict gets reworded each session.>
+
 ## Next steps (ordered)
 1. <next concrete action>
 2. ...
@@ -86,8 +101,8 @@ on the next session, so after `/clear` you continue from exactly where you left 
 - <questions or blockers, if any>
 
 ## Skills
-- <skill name to auto-inject next session — omit the whole section to keep the machine defaults>
-- -<name> <— a leading dash removes a default instead of adding one>
+- <skill name step 1 needs — auto-injected next session AND named back in the resume cue>
+- -<name> <— a leading dash removes a machine default instead of adding one>
 
 ## Effort
 <low|medium|high> for step 1 — <reason>. Raise if <trigger>.
@@ -136,7 +151,7 @@ measurable at all: **how many turns of work remain** — the agent's estimate, a
 hook asks for. The aim is a healthy signal, not an accounting figure: the decision only flips when
 the estimate is off by a factor, so rough inputs are fine.
 
-## Skills for the next session (optional section)
+## Skills for the next session (always write this section)
 
 The `SessionStart` injector (`~/.claude/session_inject.py`) reads `## Skills` from the active
 handoff and stacks those on top of the machine defaults in `~/.claude/session-inject.json`. So the
@@ -145,9 +160,12 @@ name (`navindex`), resolved to `~/.claude/<name>-activate.md` or `~/.claude/skil
 A full path works too. `- -caveman` drops a default for this project. Unknown names are ignored
 silently, so a wrong guess never blocks boot.
 
-Add a skill only when step 1 of *Next steps* actually needs it — every injected file is re-sent
-every turn. Omit the section entirely (the normal case) and the defaults apply unchanged.
-Defaults are managed separately: `python ~/.claude/session_inject.py --list|--add|--rm|--on|--off`.
+Write this section on **every** handoff: it is also what the resume cue names back to the next
+agent ("this work runs under: …"), so an empty section means the resuming agent gets no skill
+instruction at all. List a skill when step 1 of *Next steps* actually needs it — every injected
+file is re-sent every turn, so listing the whole catalogue is a real cost, not free insurance.
+Skills that are already machine defaults (`--list`) do not need repeating; list them only to name
+them explicitly in the cue. Defaults are managed separately: `python ~/.claude/session_inject.py --list|--add|--rm|--on|--off`.
 
 ## Effort recommendation
 

@@ -507,6 +507,45 @@ def _selftest():
     print("selftest ok")
 
 
+def boot_breakdown(cwd, b):
+    """Boot is the floor `/clear` lands on, so it caps everything this skill can save — and the
+    `## Skills` section raises it. Size the files we control (chars/4; good enough to rank them);
+    everything else is harness (system prompt, tool schemas, skill catalogue) and not ours to cut."""
+    home = pathlib.Path(os.path.expanduser("~")) / ".claude"
+    parts = [("handoff", handoff_file(cwd)),
+             ("CLAUDE.md (global)", home / "CLAUDE.md"),
+             ("CLAUDE.md (project)", pathlib.Path(cwd) / "CLAUDE.md")]
+    try:
+        sec = _section(handoff_file(cwd).read_text(encoding="utf-8", errors="replace"), "Skills")
+        names = [ln.strip()[1:].strip() for ln in sec.splitlines()
+                 if ln.strip().startswith(("-", "*"))]
+        for n in names:
+            if not n or n.startswith(("<", "-")):
+                continue
+            for cand in (home / f"{n}-activate.md", home / "skills" / n / "SKILL.md"):
+                if cand.exists():
+                    parts.append((f"skill: {n}", cand))
+                    break
+    except Exception:
+        pass
+    rows, known = [], 0
+    for label, p in parts:
+        try:
+            t = len(p.read_text(encoding="utf-8", errors="replace")) // 4
+        except Exception:
+            continue
+        known += t
+        rows.append(f"  {label:22} ~{t:6} tok")
+    price = b["usd_per_turn_saved"] / max(b["ctx"] - b["boot"], 1)   # USD per token per turn
+    out = ["", f"boot floor ~{b['boot']} tok — /clear lands here, not at zero. Of it:"]
+    out += rows
+    out.append(f"  {'harness (not yours)':22} ~{max(b['boot'] - known, 0):6} tok"
+               "  system prompt + tool schemas + skill catalogue")
+    out.append(f"every 1k added to `## Skills` costs ~${price * 1000:.4f}/turn forever and pushes "
+               f"the breakeven past {b['turns']} turns.")
+    return "\n".join(out)
+
+
 def main():
     if "--selftest" in sys.argv:
         _selftest()
@@ -554,6 +593,7 @@ def main():
         print(f"context {b['ctx']} tokens | boot here ~{b['boot']} | {b['model']}\n"
               f"${b['usd_per_turn_saved']:.3f} wasted per further turn vs a fresh session\n"
               f"breakeven: /handoff + /clear wins if more than ~{b['turns']} turns of work remain")
+        print(boot_breakdown(os.getcwd(), b))
         return
     # HOOK mode: cwd comes from the SessionStart payload on stdin (fallback to process cwd).
     cwd = os.getcwd()
@@ -570,6 +610,18 @@ def main():
             # age > 0 guard: a future mtime (clock skew, sync) must not print "-1 days ago"
             when = f"{age} days ago — verify against live state" if age > 0 else "by /handoff"
             print(f"# Resuming from saved handoff (written {when}). Continue from here:\n")
+            # The `## Skills` names are already injected verbatim by session_inject.py; naming
+            # them here only tells the agent to USE them, and to self-heal if one failed to resolve.
+            skills = [ln.strip()[1:].strip() for ln in _section(txt, "Skills").splitlines()
+                      if ln.strip().startswith(("-", "*"))]
+            # `-name` = remove a machine default (session_inject.py), not a skill in play here.
+            skills = [s for s in skills if s and not s.startswith(("<", "-"))]
+            if skills:
+                print("**FIRST ACTION, before anything else:** whatever the next user message is, "
+                      "this work runs under: " + ", ".join(f"`{s}`" for s in skills) +
+                      ". They are injected above — follow them from turn one. If any is missing "
+                      "from your context, invoke the Skill tool for it before reading files, "
+                      "running commands, or answering.\n")
             print(txt)
 
 
