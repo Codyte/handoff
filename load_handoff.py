@@ -148,8 +148,8 @@ def standing_status(cwd):
     if n <= STANDING_CAP:
         return None
     return (f"standing.md: {n} non-empty lines (cap {STANDING_CAP}) — re-sent every turn of every "
-            f"future session. Retire entries whose work is done (the archive keeps them) before "
-            f"writing this handoff.")
+            f"future session. Retire entries whose work is done before writing this handoff — "
+            f"retiring is safe, git keeps them (`git log -p` on that file).")
 
 
 def legacy_note(cwd, txt):
