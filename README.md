@@ -51,7 +51,7 @@ The skill drives these, but the script stands alone:
 | `load_handoff.py --archive` | Move the current active handoff into `archive/` before overwriting |
 | `load_handoff.py --open` | Show Next steps + Open/blockers of the active handoff (the live TODO) |
 | `load_handoff.py --history` | Chronological digest of every archived handoff |
-| `load_handoff.py --grep <term>` | Archived handoffs mentioning `<term>`, with date + matching lines |
+| `load_handoff.py --grep <term>` | `standing.md` (labelled LIVE) + archived handoffs mentioning `<term>`, with date + matching lines |
 | `load_handoff.py --context` | Context size, measured boot context, $/turn wasted, and the handoff breakeven in turns |
 | `load_handoff.py --spawn` | Open a new Claude Code session here, booted on the handoff (what `/handoff -f` calls). In the VS Code extension it prints the `Ctrl+Shift+P` > *New Conversation* keystroke instead — a console session there would be a different UI |
 

@@ -57,9 +57,9 @@ constraints; edited in place, never archived, injected even with no active hando
 #   L452   history
 #   L472   open_items
 #   L488   grep
-#   L500   _selftest
-#   L613   boot_breakdown
-#   L653   main
+#   L509   _selftest
+#   L625   boot_breakdown
+#   L665   main
 # ======================= END NAV INDEX =======================
 
 import sys, os, json, re, pathlib, datetime
@@ -487,8 +487,17 @@ def open_items(cwd):
 
 def grep(cwd, term):
     """Print archived handoffs whose text contains <term> (case-insensitive), with date + the
-    matching lines — find when a decision/context appeared without grepping N paths by hand."""
+    matching lines — find when a decision/context appeared without grepping N paths by hand.
+
+    Searches standing.md too: it is never archived, so a live constraint would otherwise be the one
+    decision this command cannot find. Retired ones are in git (`git log -p` on that file)."""
     out = []
+    st = standing_file(cwd)
+    if st.exists():
+        hits = [ln for ln in st.read_text(encoding="utf-8").splitlines()
+                if term.lower() in ln.lower()]
+        if hits:
+            out.append("## standing.md (LIVE constraint — still binding)\n" + "\n".join(hits))
     for f in _archive_files(cwd):
         hits = [ln for ln in f.read_text(encoding="utf-8").splitlines()
                 if term.lower() in ln.lower()]
@@ -575,6 +584,9 @@ def _selftest():
         assert "cap" in (standing_status(td) or "")           # over cap → prune nudge
         archive_current(td)
         assert standing_file(td).exists()                     # archiving must never eat level 0
+        standing_file(td).write_text("- never force-push main\n", encoding="utf-8")
+        # never archived → --grep must reach it, else a LIVE constraint is the one thing it misses
+        assert "LIVE" in grep(td, "force-push") and "force-push main" in grep(td, "force-push")
         # a project that never had the section gets no standing.md invented for it
         with tempfile.TemporaryDirectory() as td2:
             (pathlib.Path(td2) / ".git").mkdir()

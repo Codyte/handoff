@@ -118,9 +118,10 @@ entry, say so in that session's `## Decisions`, so the reversal is visible inste
 **Prune it.** Every line is re-sent on every turn of every future session, and boot is the floor
 `/clear` lands on — an ever-growing level 0 eats the saving this skill exists to produce. Cap is
 ~30 non-empty lines (`STANDING_CAP`); `--archive` prints a nudge past it. An executed decision is
-history, not a constraint — drop it; the archive still has it, reachable with `--grep <term>`. Do
-not paste past decisions here in bulk: a dump of every decision ever made is larger than the
-context it was meant to save.
+history, not a constraint — drop it: retiring is safe because the entry survives in git
+(`git log -p .handoff/standing.md`), and the session that took it is in `archive/`, reachable with
+`--grep <term>`. Do not paste past decisions here in bulk: a dump of every decision ever made is
+larger than the context it was meant to save.
 
 **Don't duplicate the machine's memory store.** `~/.claude/.../memory/` holds who the user is and
 cross-project preferences. `standing.md` holds constraints on *this repo's* work, and is versioned
@@ -296,8 +297,10 @@ of them, verify against live state (git/.env/etc.) — a handoff reflects the mo
   one read. Use when the user asks "what's left / still open".
 - **What happened over time** → `load_handoff.py --history` — chronological digest (Goal + Next
   steps + Open/blockers) of every archived handoff. Use for prior sessions, recurring blockers.
-- **Find a past decision/context** → `load_handoff.py --grep <term>` — archived handoffs mentioning
-  `<term>`, with date + matching lines. Use to locate when something appeared without grepping by hand.
+- **Find a past decision/context** → `load_handoff.py --grep <term>` — `standing.md` (labelled LIVE,
+  since a current constraint outranks any past mention) plus archived handoffs mentioning `<term>`,
+  with date + matching lines. Use to locate when something appeared without grepping by hand. A
+  constraint that was *retired* is in git, not here: `git log -p .handoff/standing.md`.
 
 (prefix each with `python "$HOME/.claude/skills/handoff/`)
 
