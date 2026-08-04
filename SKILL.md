@@ -127,8 +127,24 @@ cross-project preferences. `standing.md` holds constraints on *this repo's* work
 with it, so a clone carries them. If a fact fits both, it belongs in memory, not here.
 
 A project with no constraints yet has no `standing.md` — that's normal; create it the first time a
-verdict actually binds future work. Legacy handoffs carrying the old inline `## Standing decisions`
-section are converted automatically by `--archive` (step 2).
+verdict actually binds future work.
+
+### Resuming a handoff written in the old format
+
+Old handoffs kept the standing decisions **inside** `active.md`, with the instruction to copy the
+section forward verbatim. If the handoff you booted on has a `## Standing decisions` section, that
+instruction is retired — the boot injection says so too, in one line, so the correction reaches you
+even before this file does. What to do:
+
+- **`standing.md` does not exist yet** → change nothing by hand. Step 2 (`--archive`) lifts the
+  section out on the next handoff, and it is injected on its own from then on. Just **do not write
+  that section into the new `active.md`**.
+- **`standing.md` exists and the handoff still has the section** → the section is a stale duplicate.
+  `standing.md` wins. Move any entry that exists *only* in the section into `standing.md` (with
+  `Edit`), then drop the section. Never write it again.
+
+Either way the section never appears in a handoff you write. A verdict that belongs at level 0 goes
+into `standing.md` with a targeted `Edit`; everything else is level 1 prose.
 
 ## Context checkpoint (automatic)
 

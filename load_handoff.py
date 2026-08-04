@@ -22,43 +22,44 @@ constraints; edited in place, never archived, injected even with no active hando
 """
 # ====================== BEGIN NAV INDEX ======================
 # NAV INDEX — auto-generated symbol map (refresh via the navindex skill)
-#   L69    _key
-#   L73    _git_root
-#   L83    handoff_file
-#   L95    track_files
-#   L103   STANDING_CAP
-#   L106   standing_file
-#   L117   migrate_standing
-#   L132   standing_status
-#   L150   _archive_dir
-#   L157   _archive_files
-#   L164   _wire
-#   L199   ensure_hook
-#   L224   CTX_WARN_AT
-#   L225   CTX_WARN_STEP
-#   L226   TURNS_WARN
-#   L227   BOOT_FALLBACK
-#   L228   HANDOFF_OUT
-#   L229   REDERIVE
-#   L233   _PRICES
-#   L238   prices
-#   L249   _usage_lines
-#   L270   _tail
-#   L281   _head
-#   L289   context_tokens
-#   L296   boot_context
-#   L304   breakeven
-#   L329   spawn_session
-#   L355   _warn_state
-#   L372   check_context
-#   L393   archive_current
-#   L420   _section
-#   L427   history
-#   L447   open_items
-#   L463   grep
-#   L475   _selftest
-#   L585   boot_breakdown
-#   L625   main
+#   L74    _key
+#   L78    _git_root
+#   L88    handoff_file
+#   L100   track_files
+#   L108   STANDING_CAP
+#   L111   standing_file
+#   L122   migrate_standing
+#   L137   standing_status
+#   L155   legacy_note
+#   L175   _archive_dir
+#   L182   _archive_files
+#   L189   _wire
+#   L224   ensure_hook
+#   L249   CTX_WARN_AT
+#   L250   CTX_WARN_STEP
+#   L251   TURNS_WARN
+#   L252   BOOT_FALLBACK
+#   L253   HANDOFF_OUT
+#   L254   REDERIVE
+#   L258   _PRICES
+#   L263   prices
+#   L274   _usage_lines
+#   L295   _tail
+#   L306   _head
+#   L314   context_tokens
+#   L321   boot_context
+#   L329   breakeven
+#   L354   spawn_session
+#   L380   _warn_state
+#   L397   check_context
+#   L418   archive_current
+#   L445   _section
+#   L452   history
+#   L472   open_items
+#   L488   grep
+#   L500   _selftest
+#   L613   boot_breakdown
+#   L653   main
 # ======================= END NAV INDEX =======================
 
 import sys, os, json, re, pathlib, datetime
@@ -149,6 +150,26 @@ def standing_status(cwd):
     return (f"standing.md: {n} non-empty lines (cap {STANDING_CAP}) — re-sent every turn of every "
             f"future session. Retire entries whose work is done (the archive keeps them) before "
             f"writing this handoff.")
+
+
+def legacy_note(cwd, txt):
+    """What to tell an agent that boots on a handoff still carrying the inline section.
+
+    It resumes from that file long before anything makes it read this skill's SKILL.md, and the
+    instinct the old format trained — copy the section forward verbatim — is exactly what the split
+    removes. So the correction has to ride with the handoff itself. One line, emitted only while a
+    legacy section is actually present, so it self-extinguishes at the next handoff."""
+    if not _section(txt, "Standing decisions"):
+        return ""
+    if standing_file(cwd).exists():
+        return ("NOTE: the '## Standing decisions' section below is a leftover duplicate — "
+                f"{standing_file(cwd)} (injected above) is authoritative. Move any entry that "
+                "exists ONLY in the section into that file, then delete the section from the "
+                "handoff. Never write that section again.")
+    return ("NOTE: the '## Standing decisions' section below is the OLD inline format. Do NOT copy "
+            "it into the next handoff: `/handoff` step 2 (`--archive`) moves it to "
+            ".handoff/standing.md, which is injected on its own from then on. Constraints are "
+            "edited in place there, never rewritten.")
 
 
 def _archive_dir(cwd):
@@ -542,7 +563,10 @@ def _selftest():
         old = "# H\n## Goal\ng\n## Standing decisions (carry forward verbatim)\n- rule A\n## Skills\n- x\n"
         (d / "active.md").write_text(old, encoding="utf-8")
         assert standing_status(td) is None                    # no standing.md yet → silent
+        assert "OLD inline format" in legacy_note(td, old)    # pre-migration: don't carry it fwd
+        assert legacy_note(td, "# H\n## Goal\ng\n") == ""     # clean handoff → nothing to say
         assert migrate_standing(td, old) is True
+        assert "authoritative" in legacy_note(td, old)        # post-migration: it's a duplicate now
         assert "- rule A" in standing_file(td).read_text(encoding="utf-8")
         assert migrate_standing(td, old) is False             # idempotent: never re-lifts/clobbers
         assert standing_status(td) is None                    # 3 lines, well under the cap
@@ -720,6 +744,9 @@ def main():
                       ". They are injected above — follow them from turn one. If any is missing "
                       "from your context, invoke the Skill tool for it before reading files, "
                       "running commands, or answering.\n")
+            note = legacy_note(cwd, txt)
+            if note:
+                print(note + "\n")
             print(txt)
 
 
