@@ -32,6 +32,9 @@ on the next session, so after `/clear` you continue from exactly where you left 
    ```
    Moves the current active handoff (if non-empty) to `handoff/archive/<project>/<timestamp>.md`.
    The archive is **on-demand only** — the hook never loads it, so boot stays lean.
+   This step also **lifts a legacy `## Standing decisions` section out into `standing.md`** the
+   first time it runs on an old handoff, and prints a prune nudge if `standing.md` is over its cap
+   — act on both before writing the new file (see **Two levels** below).
 3. **Write** the active file (path from step 1) with the sections below — terse, high-signal, no
    transcript. Overwrite it (idempotent; one active handoff per project). Splitting the work
    across two agents that run at the same time → see **Split mode** below.
@@ -73,21 +76,6 @@ on the next session, so after `/clear` you continue from exactly where you left 
 - <what was tried and rejected — with the reason it failed. Without this the resume re-walks dead
   ends at full price; a rejected path is worth as much as a chosen one>
 
-## Standing decisions (carry forward verbatim)
-<Copy this section from the previous handoff unchanged, then add or retire entries. It is the only
-section that is inherited rather than rewritten — everything else describes one session, this one
-accumulates. Keep ONLY verdicts that still constrain future work: a floor not to cross, an approach
-already rejected with a measurement behind it, a rule about where fixes go. Drop entries whose work
-is done — an executed decision is history, not a constraint. Retire an entry when reality overturns
-it, and say so in `## Decisions` that session, so the reversal is visible instead of silent.
-
-Omit the section only on the first handoff of a project. Once it exists, dropping it is the
-expensive failure: the next agent re-derives the same verdicts by reading the whole archive, which
-costs more than the section ever will. Past sessions' full decisions stay in `archive/` — reachable
-with `--grep <term>` when a specific one is needed. Do not paste them here in bulk; a dump of every
-decision ever made is larger than the context it was meant to save, and dedup does not shrink it —
-the same verdict gets reworded each session.>
-
 ## Next steps (ordered)
 1. <next concrete action>
 2. ...
@@ -107,6 +95,40 @@ the same verdict gets reworded each session.>
 ## Effort
 <low|medium|high> for step 1 — <reason>. Raise if <trigger>.
 ```
+
+## Two levels: `standing.md` (persistent) vs `active.md` (this session)
+
+Two files in `.handoff/`, both injected at boot, with opposite lifecycles:
+
+| | `standing.md` — **level 0** | `active.md` — **level 1** |
+|---|---|---|
+| Scope | the project, across all sessions | the session that just ended |
+| Written | **edited in place**, only when a verdict changes | overwritten every handoff |
+| Archived | never — it *is* the carry-forward | yes, on every handoff |
+
+Level 0 holds only verdicts that **still constrain future work**: a floor not to cross, an approach
+already rejected with a measurement behind it, a rule about where fixes go, a trap in the
+environment that will bite again. Everything narrative — what happened, what shipped, what's next —
+is level 1.
+
+**Never rewrite `standing.md` wholesale.** Use `Edit` to add one entry or retire one entry; a `Write`
+of the whole file is exactly the reword-and-drift this split exists to prevent. When you retire an
+entry, say so in that session's `## Decisions`, so the reversal is visible instead of silent.
+
+**Prune it.** Every line is re-sent on every turn of every future session, and boot is the floor
+`/clear` lands on — an ever-growing level 0 eats the saving this skill exists to produce. Cap is
+~30 non-empty lines (`STANDING_CAP`); `--archive` prints a nudge past it. An executed decision is
+history, not a constraint — drop it; the archive still has it, reachable with `--grep <term>`. Do
+not paste past decisions here in bulk: a dump of every decision ever made is larger than the
+context it was meant to save.
+
+**Don't duplicate the machine's memory store.** `~/.claude/.../memory/` holds who the user is and
+cross-project preferences. `standing.md` holds constraints on *this repo's* work, and is versioned
+with it, so a clone carries them. If a fact fits both, it belongs in memory, not here.
+
+A project with no constraints yet has no `standing.md` — that's normal; create it the first time a
+verdict actually binds future work. Legacy handoffs carrying the old inline `## Standing decisions`
+section are converted automatically by `--archive` (step 2).
 
 ## Context checkpoint (automatic)
 
@@ -268,6 +290,9 @@ of them, verify against live state (git/.env/etc.) — a handoff reflects the mo
   project* (commit it so handoffs travel with the code). Outside any repo → `~/.claude/handoff/`
   (per machine). The choice is automatic, derived from the cwd by `handoff_file()`, so skill and
   hook always agree.
+- `standing.md` lives beside `active.md` (same repo-local or per-machine store) and is versioned
+  with the project, so a clone carries the constraints. It is auto-loaded at boot **independently**
+  of the handoff — a project whose handoff was cleared still boots with its constraints.
 - Only the single active handoff is auto-loaded at boot. Past handoffs accumulate in
   `archive/` (`<repo>/.handoff/archive/` in a repo; `~/.claude/handoff/archive/<project>/`
   globally) — one timestamped file each, read on demand, never injected, so full history costs

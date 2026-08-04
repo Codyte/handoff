@@ -15,41 +15,50 @@ Two modes:
 
 Handoff files live in <repo>/.handoff/active.md when cwd is inside a git repo (versioned with the
 project), else under ~/.claude/handoff/<sanitized-project-path>.md (per machine).
+
+Two injected levels, opposite lifecycles: `standing.md` (level 0 — the project's persistent
+constraints; edited in place, never archived, injected even with no active handoff) and
+`active.md` (level 1 — one session; overwritten every handoff, archived first).
 """
 # ====================== BEGIN NAV INDEX ======================
 # NAV INDEX — auto-generated symbol map (refresh via the navindex skill)
-#   L64    _key
-#   L68    _git_root
-#   L78    handoff_file
-#   L90    track_files
-#   L98    _archive_dir
-#   L105   _archive_files
-#   L112   _wire
-#   L147   ensure_hook
-#   L172   CTX_WARN_AT
-#   L173   CTX_WARN_STEP
-#   L174   TURNS_WARN
-#   L175   BOOT_FALLBACK
-#   L176   HANDOFF_OUT
-#   L177   REDERIVE
-#   L181   _PRICES
-#   L186   prices
-#   L197   _usage_lines
-#   L218   _tail
-#   L229   _head
-#   L237   context_tokens
-#   L244   boot_context
-#   L252   breakeven
-#   L277   spawn_session
-#   L303   _warn_state
-#   L320   check_context
-#   L341   archive_current
-#   L368   _section
-#   L375   history
-#   L395   open_items
-#   L411   grep
-#   L423   _selftest
-#   L510   main
+#   L69    _key
+#   L73    _git_root
+#   L83    handoff_file
+#   L95    track_files
+#   L103   STANDING_CAP
+#   L106   standing_file
+#   L117   migrate_standing
+#   L132   standing_status
+#   L150   _archive_dir
+#   L157   _archive_files
+#   L164   _wire
+#   L199   ensure_hook
+#   L224   CTX_WARN_AT
+#   L225   CTX_WARN_STEP
+#   L226   TURNS_WARN
+#   L227   BOOT_FALLBACK
+#   L228   HANDOFF_OUT
+#   L229   REDERIVE
+#   L233   _PRICES
+#   L238   prices
+#   L249   _usage_lines
+#   L270   _tail
+#   L281   _head
+#   L289   context_tokens
+#   L296   boot_context
+#   L304   breakeven
+#   L329   spawn_session
+#   L355   _warn_state
+#   L372   check_context
+#   L393   archive_current
+#   L420   _section
+#   L427   history
+#   L447   open_items
+#   L463   grep
+#   L475   _selftest
+#   L585   boot_breakdown
+#   L625   main
 # ======================= END NAV INDEX =======================
 
 import sys, os, json, re, pathlib, datetime
@@ -93,6 +102,53 @@ def track_files(cwd):
     Only active.md is auto-loaded at boot; it routes each agent to its own track file."""
     d = handoff_file(cwd).parent
     return sorted(d.glob("track*.md"))
+
+
+STANDING_CAP = 30            # non-empty lines; past this, --archive nudges to prune (see below)
+
+
+def standing_file(cwd):
+    """Level 0 — the project's persistent constraints, next to the active handoff.
+
+    A handoff describes ONE session and is rewritten every time; these verdicts outlive all of
+    them. Keeping them in their own file means /handoff never rewrites them, so a constraint
+    cannot be silently reworded, shortened or dropped by a copy-forward — which is the failure
+    this split exists to remove. Injected at boot ahead of the session handoff, and independently
+    of it (a project with no active handoff still boots with its constraints)."""
+    return handoff_file(cwd).parent / "standing.md"
+
+
+def migrate_standing(cwd, txt):
+    """One-time lift: older handoffs carried '## Standing decisions' INSIDE active.md, copied
+    verbatim each session. On the first archive after this upgrade, move it out — no manual step,
+    no lost verdicts. `txt` is the outgoing handoff's text. No-op once standing.md exists."""
+    dest = standing_file(cwd)
+    if dest.exists():
+        return False
+    body = _section(txt, "Standing decisions")
+    if not body:
+        return False
+    dest.write_text("# Standing decisions — persistent constraints for this project\n\n"
+                    + body + "\n", encoding="utf-8")
+    return True
+
+
+def standing_status(cwd):
+    """Nudge when standing.md outgrows its cap — returned at HANDOFF time, never at boot.
+
+    Boot is the floor /clear lands on, and every line here is re-sent on every turn of every
+    future session, forever. So the file has to be pruned, not accumulated. Warning at boot would
+    itself cost tokens every turn; warning at handoff time reaches the agent at the one moment it
+    is both looking at the decisions and able to retire them."""
+    f = standing_file(cwd)
+    if not f.exists():
+        return None
+    n = len([ln for ln in f.read_text(encoding="utf-8").splitlines() if ln.strip()])
+    if n <= STANDING_CAP:
+        return None
+    return (f"standing.md: {n} non-empty lines (cap {STANDING_CAP}) — re-sent every turn of every "
+            f"future session. Retire entries whose work is done (the archive keeps them) before "
+            f"writing this handoff.")
 
 
 def _archive_dir(cwd):
@@ -477,6 +533,29 @@ def _selftest():
         body = arc.read_text(encoding="utf-8")
         assert "1. portal" in body and "- none" in body, body   # tracks folded into the archive
         assert not track_files(td)                              # …and cleared, never stranded
+    # level 0: the section is lifted out of the handoff exactly once, survives --archive, and only
+    # nags about size once past the cap
+    with tempfile.TemporaryDirectory() as td:
+        (pathlib.Path(td) / ".git").mkdir()
+        d = pathlib.Path(td) / ".handoff"
+        d.mkdir()
+        old = "# H\n## Goal\ng\n## Standing decisions (carry forward verbatim)\n- rule A\n## Skills\n- x\n"
+        (d / "active.md").write_text(old, encoding="utf-8")
+        assert standing_status(td) is None                    # no standing.md yet → silent
+        assert migrate_standing(td, old) is True
+        assert "- rule A" in standing_file(td).read_text(encoding="utf-8")
+        assert migrate_standing(td, old) is False             # idempotent: never re-lifts/clobbers
+        assert standing_status(td) is None                    # 3 lines, well under the cap
+        standing_file(td).write_text("\n".join(f"- r{i}" for i in range(STANDING_CAP + 1)),
+                                     encoding="utf-8")
+        assert "cap" in (standing_status(td) or "")           # over cap → prune nudge
+        archive_current(td)
+        assert standing_file(td).exists()                     # archiving must never eat level 0
+        # a project that never had the section gets no standing.md invented for it
+        with tempfile.TemporaryDirectory() as td2:
+            (pathlib.Path(td2) / ".git").mkdir()
+            assert migrate_standing(td2, "# H\n## Goal\ng\n") is False
+            assert not standing_file(td2).exists()
     # context_tokens: last non-sidechain usage line wins, all three input fields summed
     with tempfile.TemporaryDirectory() as td:
         t = pathlib.Path(td) / "t.jsonl"
@@ -513,6 +592,7 @@ def boot_breakdown(cwd, b):
     everything else is harness (system prompt, tool schemas, skill catalogue) and not ours to cut."""
     home = pathlib.Path(os.path.expanduser("~")) / ".claude"
     parts = [("handoff", handoff_file(cwd)),
+             ("standing decisions", standing_file(cwd)),
              ("CLAUDE.md (global)", home / "CLAUDE.md"),
              ("CLAUDE.md (project)", pathlib.Path(cwd) / "CLAUDE.md")]
     try:
@@ -565,8 +645,18 @@ def main():
         print(grep(os.getcwd(), term) if term else "(usage: --grep <term>)")
         return
     if "--archive" in sys.argv:
-        dest = archive_current(os.getcwd())
+        cwd = os.getcwd()
+        active = handoff_file(cwd)
+        outgoing = active.read_text(encoding="utf-8") if active.exists() else ""
+        dest = archive_current(cwd)
         print(dest if dest else "(no non-empty handoff to archive)")
+        if migrate_standing(cwd, outgoing):
+            print(f"lifted '## Standing decisions' into {standing_file(cwd)} — it is injected at "
+                  "boot from there now. Do NOT copy that section into the new handoff; edit that "
+                  "file in place when a constraint changes.")
+        note = standing_status(cwd)
+        if note:
+            print(note)
         return
     if "--history" in sys.argv:
         print(history(os.getcwd()))
@@ -601,6 +691,14 @@ def main():
         cwd = json.load(sys.stdin).get("cwd") or cwd
     except Exception:
         pass
+    # Level 0 first, and independently of the handoff: constraints bind the session even when
+    # there is nothing to resume (fresh project, or the handoff was cleared).
+    st = standing_file(cwd)
+    stxt = st.read_text(encoding="utf-8").strip() if st.exists() else ""
+    if stxt:
+        print(f"<!-- persistent, project-wide; outlives every session. Binding constraints, not "
+              f"history. Overturned by what you do now? edit {st} and say so in this handoff. -->\n"
+              f"{stxt}\n")
     f = handoff_file(cwd)
     if f.exists():
         txt = f.read_text(encoding="utf-8").strip()

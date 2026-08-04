@@ -66,6 +66,19 @@ Automatic, derived from the current directory so the skill and hook always agree
 Only the single active handoff is auto-loaded at boot. Past handoffs accumulate in `archive/`, read
 on demand, never injected — so full history costs zero boot tokens. Prune old archive files freely.
 
+### Two levels
+
+`.handoff/` holds two injected files with opposite lifecycles:
+
+- **`standing.md`** (level 0) — the project's persistent constraints. Edited in place, never
+  rewritten by a handoff, never archived, injected even when there is no active handoff. A
+  constraint therefore cannot be silently reworded or dropped by a copy-forward. Prune it: every
+  line is re-sent on every turn of every future session (cap ~30 lines; `--archive` nudges past it).
+- **`active.md`** (level 1) — the session that just ended. Overwritten each handoff, archived first.
+
+Legacy handoffs carrying an inline `## Standing decisions` section are lifted into `standing.md`
+automatically on the next `--archive`.
+
 ## Documentation
 
 [`SKILL.md`](SKILL.md) — full spec: the handoff format, the archive/navigate commands, and the
