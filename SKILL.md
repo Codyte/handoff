@@ -192,19 +192,16 @@ the estimate is off by a factor, so rough inputs are fine.
 
 ## Skills for the next session (always write this section)
 
-The `SessionStart` injector (`~/.claude/session_inject.py`) reads `## Skills` from the active
-handoff and stacks those on top of the machine defaults in `~/.claude/session-inject.json`. So the
-agent writing the handoff decides what the *resuming* agent boots with — one bullet per skill, bare
-name (`navindex`), resolved to `~/.claude/<name>-activate.md` or `~/.claude/skills/<name>/SKILL.md`.
-A full path works too. `- -caveman` drops a default for this project. Unknown names are ignored
-silently, so a wrong guess never blocks boot.
+Write one bullet per instruction or skill that the saved work actually needs next. A bare name
+(`navindex`) or full path is allowed; `- -caveman` removes a machine default where that integration
+supports defaults. Keep the list small: skill metadata and any loaded instruction add recurring
+context cost.
 
-Write this section on **every** handoff: it is also what the resume cue names back to the next
-agent ("this work runs under: …"), so an empty section means the resuming agent gets no skill
-instruction at all. List a skill when step 1 of *Next steps* actually needs it — every injected
-file is re-sent every turn, so listing the whole catalogue is a real cost, not free insurance.
-Skills that are already machine defaults (`--list`) do not need repeating; list them only to name
-them explicitly in the cue. Defaults are managed separately: `python ~/.claude/session_inject.py --list|--add|--rm|--on|--off`.
+The resume cue is deliberately conditional. It tells the next agent to load missing instructions
+when it continues the saved handoff, but it does not claim that every client already injected the
+full skill body. If the latest user request is unrelated to the saved work, those handoff-specific
+skills must not be forced onto it. Claude Code may additionally resolve this section through its
+optional `session_inject.py`; Codex can use its skill catalogue or read the named path explicitly.
 
 ## Effort recommendation
 

@@ -449,6 +449,21 @@ def _section(txt, head):
     return m.group(1).strip() if m else ""
 
 
+def resume_skills_note(txt):
+    """Return a truthful, task-scoped reminder for skills named by the saved handoff."""
+    skills = [ln.strip()[1:].strip() for ln in _section(txt, "Skills").splitlines()
+              if ln.strip().startswith(("-", "*"))]
+    # `-name` removes a machine default; `<none>` is a format placeholder.
+    skills = [s for s in skills if s and not s.startswith(("<", "-"))]
+    if not skills:
+        return ""
+    return ("**When continuing the saved handoff:** use these task-specific instructions: "
+            + ", ".join(f"`{s}`" for s in skills)
+            + ". Load and follow any instruction that is not already available before acting on "
+              "the saved work. If the latest user request is unrelated, follow that request "
+              "without forcing these handoff-specific instructions.")
+
+
 def history(cwd):
     """Chronological digest of the archive: per past handoff, its Goal + Next steps +
     Open/blockers — the 'what was pending over time' view, derived on the fly from existing
@@ -515,6 +530,12 @@ def _selftest():
     assert _section(sample, "Open / blockers") == "- x"   # '/' is escaped, not regex
     assert _section(sample, "Missing") == ""              # absent section → empty
     assert _section("", "Goal") == ""                     # empty input → empty
+    note = resume_skills_note("## Skills\n- navindex\n- C:/skills/custom.md\n- -caveman\n")
+    assert "navindex" in note and "C:/skills/custom.md" in note, note
+    assert "latest user request is unrelated" in note, note
+    assert "whatever the next user message is" not in note, note
+    assert "injected above" not in note, note
+    assert resume_skills_note("## Skills\n- <none>\n") == ""
     # ensure_hook: fresh install gets the matcher; a pre-matcher install is migrated in place.
     import tempfile
     with tempfile.TemporaryDirectory() as td:
@@ -744,18 +765,9 @@ def main():
             # age > 0 guard: a future mtime (clock skew, sync) must not print "-1 days ago"
             when = f"{age} days ago — verify against live state" if age > 0 else "by /handoff"
             print(f"# Resuming from saved handoff (written {when}). Continue from here:\n")
-            # The `## Skills` names are already injected verbatim by session_inject.py; naming
-            # them here only tells the agent to USE them, and to self-heal if one failed to resolve.
-            skills = [ln.strip()[1:].strip() for ln in _section(txt, "Skills").splitlines()
-                      if ln.strip().startswith(("-", "*"))]
-            # `-name` = remove a machine default (session_inject.py), not a skill in play here.
-            skills = [s for s in skills if s and not s.startswith(("<", "-"))]
-            if skills:
-                print("**FIRST ACTION, before anything else:** whatever the next user message is, "
-                      "this work runs under: " + ", ".join(f"`{s}`" for s in skills) +
-                      ". They are injected above — follow them from turn one. If any is missing "
-                      "from your context, invoke the Skill tool for it before reading files, "
-                      "running commands, or answering.\n")
+            note = resume_skills_note(txt)
+            if note:
+                print(note + "\n")
             note = legacy_note(cwd, txt)
             if note:
                 print(note + "\n")
