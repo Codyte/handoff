@@ -16,50 +16,57 @@ Two modes:
 Handoff files live in <repo>/.handoff/active.md when cwd is inside a git repo (versioned with the
 project), else under ~/.claude/handoff/<sanitized-project-path>.md (per machine).
 
-Two injected levels, opposite lifecycles: `standing.md` (level 0 — the project's persistent
-constraints; edited in place, never archived, injected even with no active handoff) and
-`active.md` (level 1 — one session; overwritten every handoff, archived first).
+Injected levels, different lifecycles: `standing.md` (level 0 — the project's persistent
+constraints; edited in place, never archived, injected even with no active handoff), the optional
+`plan.md` (level 0.5 — a sequence outliving the session, as steps with a verifiable `done when`;
+edited one step at a time, injected only while a step is open) and `active.md` (level 1 — one
+session; overwritten every handoff, archived first).
 """
 # ====================== BEGIN NAV INDEX ======================
 # NAV INDEX — auto-generated symbol map (refresh via the navindex skill)
-#   L74    _key
-#   L78    _git_root
-#   L88    handoff_file
-#   L100   track_files
-#   L108   STANDING_CAP
-#   L111   standing_file
-#   L122   migrate_standing
-#   L137   standing_status
-#   L155   legacy_note
-#   L175   _archive_dir
-#   L182   _archive_files
-#   L189   _wire
-#   L224   ensure_hook
-#   L249   CTX_WARN_AT
-#   L250   CTX_WARN_STEP
-#   L251   TURNS_WARN
-#   L252   BOOT_FALLBACK
-#   L253   HANDOFF_OUT
-#   L254   REDERIVE
-#   L258   _PRICES
-#   L263   prices
-#   L274   _usage_lines
-#   L295   _tail
-#   L306   _head
-#   L314   context_tokens
-#   L321   boot_context
-#   L329   breakeven
-#   L354   spawn_session
-#   L380   _warn_state
-#   L397   check_context
-#   L418   archive_current
-#   L445   _section
-#   L452   history
-#   L472   open_items
-#   L488   grep
-#   L509   _selftest
-#   L625   boot_breakdown
-#   L665   main
+#   L81    _key
+#   L85    _git_root
+#   L95    handoff_file
+#   L107   track_files
+#   L115   STANDING_CAP
+#   L118   standing_file
+#   L129   plan_file
+#   L142   _PLAN_OPEN
+#   L143   _PLAN_DONE
+#   L146   plan_state
+#   L160   migrate_standing
+#   L175   standing_status
+#   L193   legacy_note
+#   L213   _archive_dir
+#   L220   _archive_files
+#   L227   _wire
+#   L262   ensure_hook
+#   L287   CTX_WARN_AT
+#   L288   CTX_WARN_STEP
+#   L289   TURNS_WARN
+#   L290   BOOT_FALLBACK
+#   L291   HANDOFF_OUT
+#   L292   REDERIVE
+#   L296   _PRICES
+#   L301   prices
+#   L312   _usage_lines
+#   L333   _tail
+#   L344   _head
+#   L352   context_tokens
+#   L359   boot_context
+#   L367   breakeven
+#   L392   spawn_session
+#   L418   _warn_state
+#   L435   check_context
+#   L456   archive_current
+#   L490   _section
+#   L497   resume_skills_note
+#   L512   history
+#   L532   open_items
+#   L554   grep
+#   L575   _selftest
+#   L723   boot_breakdown
+#   L763   main
 # ======================= END NAV INDEX =======================
 
 import sys, os, json, re, pathlib, datetime
@@ -117,6 +124,37 @@ def standing_file(cwd):
     this split exists to remove. Injected at boot ahead of the session handoff, and independently
     of it (a project with no active handoff still boots with its constraints)."""
     return handoff_file(cwd).parent / "standing.md"
+
+
+def plan_file(cwd):
+    """Level 0.5 — an idempotent, multi-session plan, next to the active handoff. Optional.
+
+    Neither other level fits a plan. `standing.md` never ends and holds no order; `active.md` is
+    rewritten WHOLE every handoff, and a plan rewritten whole is a plan whose steps get reworded —
+    which destroys the only property worth having here: every step carries a verifiable `done
+    when`, so resuming mid-plan means CHECKING conditions, not re-reading prose. Hence its own
+    file, edited one step at a time, injected at boot only while a step is still open.
+
+    No plan.md → nothing changes anywhere. That is the point: opting in is creating the file."""
+    return handoff_file(cwd).parent / "plan.md"
+
+
+_PLAN_OPEN = re.compile(r"^\s*[-*]\s*\[ \]\s*(.+)$", re.M)
+_PLAN_DONE = re.compile(r"^\s*[-*]\s*\[[xX]\]\s*(.+)$", re.M)
+
+
+def plan_state(cwd):
+    """(text, [open step lines], done count) for the plan, or None when there is no plan.
+
+    Open/done is read from the checkboxes, not from a counter someone has to keep in sync — the
+    file itself is the state, so an Edit that ticks a box IS the state change."""
+    f = plan_file(cwd)
+    if not f.exists():
+        return None
+    txt = f.read_text(encoding="utf-8").strip()
+    if not txt:
+        return None
+    return txt, _PLAN_OPEN.findall(txt), len(_PLAN_DONE.findall(txt))
 
 
 def migrate_standing(cwd, txt):
@@ -432,6 +470,13 @@ def archive_current(cwd):
         body = t.read_text(encoding="utf-8").strip()
         if body:
             txt += f"\n\n<!-- ===== {t.name} ===== -->\n\n{body}"
+    # A plan spans sessions, so archiving a handoff must NEVER touch an unfinished one. A plan with
+    # no open step is finished: fold it into this archive and clear it, so the next plan starts on
+    # an empty file instead of inheriting ticked boxes nobody will read again.
+    pl = plan_state(cwd)
+    if pl and not pl[1]:
+        txt += f"\n\n<!-- ===== plan.md (completed) ===== -->\n\n{pl[0]}"
+        plan_file(cwd).unlink()
     arc_dir = _archive_dir(cwd)
     arc_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.datetime.now().strftime("%Y-%m-%dT%H%M%S")
@@ -497,6 +542,12 @@ def open_items(cwd):
     # a split handoff keeps the real TODO in the track files; active.md is just the router
     for t in track_files(cwd):
         parts += pending(t.read_text(encoding="utf-8"), t.stem)
+    # The plan outranks Next steps when both exist: Next steps is one session's slice, the plan is
+    # the whole sequence and says which step the slice sits in. First open step is where to resume.
+    pl = plan_state(cwd)
+    if pl and pl[1]:
+        parts.insert(0, f"**Plan — resume at:** {pl[1][0]}\n({pl[2]} done, {len(pl[1])} open — "
+                        f"check its `done when` before doing it; {plan_file(cwd)})")
     return "\n\n".join(parts) or "(no active handoff, or nothing open)"
 
 
@@ -613,6 +664,32 @@ def _selftest():
             (pathlib.Path(td2) / ".git").mkdir()
             assert migrate_standing(td2, "# H\n## Goal\ng\n") is False
             assert not standing_file(td2).exists()
+    # level 0.5: the plan is optional, survives --archive while open, folds in once finished, and
+    # is what --open resumes at
+    with tempfile.TemporaryDirectory() as td:
+        (pathlib.Path(td) / ".git").mkdir()
+        (pathlib.Path(td) / ".handoff").mkdir()
+        assert plan_state(td) is None                          # no plan → the feature is absent
+        assert open_items(td) == "(no active handoff, or nothing open)"
+        handoff_file(td).write_text("# H\n## Next steps\n1. keep going\n", encoding="utf-8")
+        plan_file(td).write_text(
+            "# Plano\n\n- [x] 1. escopo — done when: congelado\n      evidencia: 3 verbos\n"
+            "- [ ] 2. escrever — done when: rebuild ALL PASS\n"
+            "- [ ] 3. bateria — done when: dry+apply por verbo\n", encoding="utf-8")
+        txt, opn, done = plan_state(td)
+        assert done == 1 and len(opn) == 2, (done, opn)        # checkboxes ARE the state
+        assert opn[0].startswith("2. escrever"), opn           # first open step = where to resume
+        out = open_items(td)
+        assert out.startswith("**Plan — resume at:** 2. escrever"), out
+        assert "1 done, 2 open" in out, out
+        archive_current(td)
+        assert plan_file(td).exists()                          # unfinished plan is never eaten
+        plan_file(td).write_text("# Plano\n\n- [x] 1. tudo — done when: pronto\n", encoding="utf-8")
+        assert plan_state(td)[1] == []                         # no open step → finished
+        handoff_file(td).write_text("# H2\n## Goal\nfim\n", encoding="utf-8")
+        arc = archive_current(td)
+        assert "plan.md (completed)" in arc.read_text(encoding="utf-8")
+        assert not plan_file(td).exists()                      # …folded in and cleared
     # context_tokens: last non-sidechain usage line wins, all three input fields summed
     with tempfile.TemporaryDirectory() as td:
         t = pathlib.Path(td) / "t.jsonl"
@@ -690,6 +767,9 @@ def main():
     if "--ensure-hook" in sys.argv:
         ensure_hook()
         return
+    if "--plan-path" in sys.argv:
+        print(plan_file(os.getcwd()))
+        return
     if "--path" in sys.argv:
         print(handoff_file(os.getcwd()))
         return
@@ -756,6 +836,16 @@ def main():
         print(f"<!-- persistent, project-wide; outlives every session. Binding constraints, not "
               f"history. Overturned by what you do now? edit {st} and say so in this handoff. -->\n"
               f"{stxt}\n")
+    # Level 0.5 — the plan, between the constraints and the session state, because it is the frame
+    # the session state sits inside. Injected only while a step is open: a finished plan costs
+    # nothing from the turn it is finished, without anyone having to remember to remove it.
+    pl = plan_state(cwd)
+    if pl and pl[1]:
+        print(f"<!-- multi-session plan · {pl[2]} done / {len(pl[1])} open · {plan_file(cwd)}\n"
+              f"Resume at the FIRST open step — but check its `done when` before doing it, the "
+              f"step may already be satisfied by work another session finished. Closing a step is "
+              f"an Edit that flips [ ] to [x] and adds the evidence that closed it; never rewrite "
+              f"this file whole, and never restate its steps in the handoff. -->\n{pl[0]}\n")
     f = handoff_file(cwd)
     if f.exists():
         txt = f.read_text(encoding="utf-8").strip()

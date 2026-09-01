@@ -1,7 +1,22 @@
 ---
 name: handoff
-description: Save a compact handoff of the current session (goal, state, decisions, next steps, key files) so you can /clear and resume cheaply, AND navigate past handoffs. The SessionStart hook auto-loads the active one on the next session. Use when switching tasks, before /clear, when context grows large (over ~150k tokens), when the user says "handoff"/"save state"/"/handoff", OR when the user asks what's still pending/open from before, to see handoff history, or to find something from a past session. Also writes a split handoff (router + one track file per agent) when the work is to continue on two agents running in parallel.
+description: Save a compact handoff of the current session (goal, state, decisions, next steps, key files) so you can /clear and resume cheaply, AND navigate past handoffs. The SessionStart hook auto-loads the active one on the next session. Use when switching tasks, before /clear, when context grows large (over ~150k tokens), when the user says "handoff"/"save state"/"/handoff", OR when the user asks what's still pending/open from before, to see handoff history, or to find something from a past session. Also writes a split handoff (router + one track file per agent) when the work is to continue on two agents running in parallel. With the `plan` argument (`/handoff plan`) it additionally opens an optional multi-session plan file whose steps each carry a verifiable "done when", so resuming means checking conditions instead of re-deriving what is already finished.
 ---
+
+<!-- ====================== BEGIN NAV INDEX ====================== -->
+<!-- NAV INDEX — auto-generated symbol map (refresh via the navindex skill) -->
+<!--   L21    /handoff — save session state so `/clear` is free -->
+<!--   L27    Steps -->
+<!--   L76    Format (keep under ~80 lines — a resume cue, not a log) -->
+<!--   L118   Levels: `standing.md` (persistent) · `plan.md` (optional) · `active.md` (this session) -->
+<!--   L170   Plan mode — `/handoff plan` (optional) -->
+<!--   L218   Context checkpoint (automatic) -->
+<!--   L261   Skills for the next session (always write this section) -->
+<!--   L274   Effort recommendation -->
+<!--   L303   Split mode — two agents at once (optional) -->
+<!--   L355   Navigate the history -->
+<!--   L372   Notes -->
+<!-- ======================= END NAV INDEX ======================= -->
 
 # /handoff — save session state so `/clear` is free
 
@@ -34,10 +49,14 @@ on the next session, so after `/clear` you continue from exactly where you left 
    The archive is **on-demand only** — the hook never loads it, so boot stays lean.
    This step also **lifts a legacy `## Standing decisions` section out into `standing.md`** the
    first time it runs on an old handoff, and prints a prune nudge if `standing.md` is over its cap
-   — act on both before writing the new file (see **Two levels** below).
+   — act on both before writing the new file (see **Levels** below). An unfinished `plan.md` is
+   left alone; a fully closed one is folded into the archive and cleared.
 3. **Write** the active file (path from step 1) with the sections below — terse, high-signal, no
    transcript. Overwrite it (idempotent; one active handoff per project). Splitting the work
    across two agents that run at the same time → see **Split mode** below.
+   If `.handoff/plan.md` exists, **update it in the same breath** — tick the steps this session
+   closed, each with the evidence that closed it. See **Plan mode** below; `/handoff plan` is what
+   creates it in the first place.
 4. Tell the user it's saved and they can now `/clear`; the next session resumes automatically.
    With **`/handoff -f`** (fast handoff), also run
    ```
@@ -96,15 +115,16 @@ on the next session, so after `/clear` you continue from exactly where you left 
 <low|medium|high> for step 1 — <reason>. Raise if <trigger>.
 ```
 
-## Two levels: `standing.md` (persistent) vs `active.md` (this session)
+## Levels: `standing.md` (persistent) · `plan.md` (optional) · `active.md` (this session)
 
-Two files in `.handoff/`, both injected at boot, with opposite lifecycles:
+Files in `.handoff/`, injected at boot, with different lifecycles:
 
-| | `standing.md` — **level 0** | `active.md` — **level 1** |
-|---|---|---|
-| Scope | the project, across all sessions | the session that just ended |
-| Written | **edited in place**, only when a verdict changes | overwritten every handoff |
-| Archived | never — it *is* the carry-forward | yes, on every handoff |
+| | `standing.md` — **level 0** | `plan.md` — **level 0.5**, optional | `active.md` — **level 1** |
+|---|---|---|---|
+| Scope | the project, across all sessions | one undertaking, across N sessions | the session that just ended |
+| Written | **edited in place**, only when a verdict changes | **edited in place**, one step at a time | overwritten every handoff |
+| Archived | never — it *is* the carry-forward | when the last step closes | yes, on every handoff |
+| Injected | always | **only while a step is open** | always |
 
 Level 0 holds only verdicts that **still constrain future work**: a floor not to cross, an approach
 already rejected with a measurement behind it, a rule about where fixes go, a trap in the
@@ -146,6 +166,54 @@ even before this file does. What to do:
 
 Either way the section never appears in a handoff you write. A verdict that belongs at level 0 goes
 into `standing.md` with a targeted `Edit`; everything else is level 1 prose.
+
+## Plan mode — `/handoff plan` (optional)
+
+`## Next steps` is one session's slice of the work. When the work is a **sequence that outlives the
+session** — a migration, a phased build-out, a documented procedure run N times — the slice keeps
+losing the frame: each resume re-derives which steps are already satisfied, and re-derivation is
+where drift enters. Plan mode adds the frame as its own file.
+
+**`/handoff plan` creates or reopens `.handoff/plan.md`.** From then on every `/handoff` updates it,
+argument or not — a plan that only moves when someone remembers the magic word is worse than none.
+Get the path with `load_handoff.py --plan-path`.
+
+**The format is a checklist whose steps carry a verifiable condition, not a description:**
+
+```markdown
+# Plan · <undertaking> · opened <date>
+
+Gate: `<command whose exit 0 is the acceptance>`     <- optional, one line
+Recipe: `<path to the reusable procedure, if the plan is an instance of one>`
+
+- [x] 1. <step> — done when: <condition someone else could check>
+      evidence: <what actually closed it, with a date or a command output>
+- [ ] 2. <step> — done when: <condition>
+- [ ] 3. <step> — done when: <condition>
+```
+
+Three properties earn the extra file, and each one is a rule:
+
+1. **`done when` is a condition, never a restatement of the step.** "done when: rebuild ALL PASS"
+   works; "done when: the verbs are written" is the step again and checks nothing. This is what
+   makes resuming idempotent — you *check* your way back to the frontier instead of re-reading.
+2. **A closed step keeps its evidence and stays visible.** That is what stops the next session
+   redoing it. Deleting done steps throws away the only proof the plan converged.
+3. **Edit, never rewrite.** Close a step by flipping `[ ]` to `[x]` and adding the evidence line —
+   same reason `standing.md` is never rewritten whole: a wholesale rewrite is where a `done when`
+   quietly turns back into prose.
+
+**Resuming:** the boot injection points at the first open step. Check its `done when` *before*
+doing it — another session, or another machine, may already have satisfied it.
+
+**Cost is self-limiting.** The plan is injected only while some step is `[ ]`; a fully ticked plan
+stops being injected from that turn on, and the next `--archive` folds it into the archived handoff
+and clears the file. No plan.md at all → nothing about the skill changes.
+
+**Don't open a plan** for work that fits one session, for a list with no verifiable conditions (that
+is `## Next steps`, and it is fine), or for a standing rule (`standing.md`). And don't restate the
+plan's steps in the handoff: the plan owns the sequence, `## Next steps` owns this session's slice
+of it — usually one line pointing at the current step.
 
 ## Context checkpoint (automatic)
 
@@ -309,6 +377,9 @@ of them, verify against live state (git/.env/etc.) — a handoff reflects the mo
 - `standing.md` lives beside `active.md` (same repo-local or per-machine store) and is versioned
   with the project, so a clone carries the constraints. It is auto-loaded at boot **independently**
   of the handoff — a project whose handoff was cleared still boots with its constraints.
+- `plan.md` (plan mode) lives in the same folder and is versioned too, so an unfinished plan
+  travels with the repo — which is what lets a second machine pick up at the frontier instead of
+  guessing. `--plan-path` prints its path; `--open` resumes at its first open step.
 - Only the single active handoff is auto-loaded at boot. Past handoffs accumulate in
   `archive/` (`<repo>/.handoff/archive/` in a repo; `~/.claude/handoff/archive/<project>/`
   globally) — one timestamped file each, read on demand, never injected, so full history costs

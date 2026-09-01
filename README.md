@@ -48,6 +48,7 @@ The skill drives these, but the script stands alone:
 | Command | What it does |
 |---------|--------------|
 | `load_handoff.py --path` | Print the active handoff file path for the current project |
+| `load_handoff.py --plan-path` | Print the plan file path (plan mode; the file need not exist yet) |
 | `load_handoff.py --archive` | Move the current active handoff into `archive/` before overwriting |
 | `load_handoff.py --open` | Show Next steps + Open/blockers of the active handoff (the live TODO) |
 | `load_handoff.py --history` | Chronological digest of every archived handoff |
@@ -66,14 +67,18 @@ Automatic, derived from the current directory so the skill and hook always agree
 Only the single active handoff is auto-loaded at boot. Past handoffs accumulate in `archive/`, read
 on demand, never injected — so full history costs zero boot tokens. Prune old archive files freely.
 
-### Two levels
+### Levels
 
-`.handoff/` holds two injected files with opposite lifecycles:
+`.handoff/` holds injected files with different lifecycles:
 
 - **`standing.md`** (level 0) — the project's persistent constraints. Edited in place, never
   rewritten by a handoff, never archived, injected even when there is no active handoff. A
   constraint therefore cannot be silently reworded or dropped by a copy-forward. Prune it: every
   line is re-sent on every turn of every future session (cap ~30 lines; `--archive` nudges past it).
+- **`plan.md`** (level 0.5, optional — `/handoff plan`) — a sequence that outlives the session, as a
+  checklist whose steps each carry a verifiable `done when` plus the evidence that closed them.
+  Edited one step at a time, injected **only while a step is open**, folded into the archive once
+  the last one closes. No plan file → the skill behaves exactly as before.
 - **`active.md`** (level 1) — the session that just ended. Overwritten each handoff, archived first.
 
 Legacy handoffs carrying an inline `## Standing decisions` section are lifted into `standing.md`
