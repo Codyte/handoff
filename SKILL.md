@@ -153,8 +153,7 @@ nobody reads. When a piece would come back big, leave it out of the batch and fe
 - **Choose, do not sweep.** A piece that step 1 does not need is noise the resume pays for on every
   turn afterwards. Four earned pieces beat twelve speculative ones — quantity is not quality. What
   decides is dependency, not subject: pieces unrelated to each other still belong in the same call,
-  and only a value another piece produces earns a call of its own.- **Choose, do not sweep.** A piece that step 1 does not need is noise the resume pays for on every
-  turn afterwards. Four earned pieces beat twelve speculative ones — quantity is not quality.
+  and only a value another piece produces earns a call of its own.
 - **Join with `;` and label each piece by number** (`echo "=== 1 ==="`, `=== 2 ===`, `=== 2.1 ===`
   for a sub-piece), never `&&` — a missing file must not kill the rest of the batch.
 - **Filter every piece** (`head`, `tail`, `cut`, `grep -n`, a summary flag). Trading ten calls for
