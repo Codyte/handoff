@@ -8,14 +8,14 @@ description: Save a compact handoff of the current session (goal, state, decisio
 <!--   L21    /handoff — save session state so `/clear` is free -->
 <!--   L27    Steps -->
 <!--   L76    Format (keep under ~80 lines — a resume cue, not a log) -->
-<!--   L118   Levels: `standing.md` (persistent) · `plan.md` (optional) · `active.md` (this session) -->
-<!--   L170   Plan mode — `/handoff plan` (optional) -->
-<!--   L218   Context checkpoint (automatic) -->
-<!--   L261   Skills for the next session (always write this section) -->
-<!--   L274   Effort recommendation -->
-<!--   L303   Split mode — two agents at once (optional) -->
-<!--   L355   Navigate the history -->
-<!--   L372   Notes -->
+<!--   L169   Levels: `standing.md` (persistent) · `plan.md` (optional) · `active.md` (this session) -->
+<!--   L221   Plan mode — `/handoff plan` (optional) -->
+<!--   L269   Context checkpoint (automatic) -->
+<!--   L312   Skills for the next session (always write this section) -->
+<!--   L325   Effort recommendation -->
+<!--   L354   Split mode — two agents at once (optional) -->
+<!--   L406   Navigate the history -->
+<!--   L423   Notes -->
 <!-- ======================= END NAV INDEX ======================= -->
 
 # /handoff — save session state so `/clear` is free
@@ -104,6 +104,12 @@ on the next session, so after `/clear` you continue from exactly where you left 
 - <the `__navi__.md` of each folder the next steps touch — one read orients the resuming session
   instead of a blind grep sweep; regenerate it first if this session moved symbols around>
 
+## First call
+<one read-only shell command that re-orients this project in a single call: the few things step 1
+actually needs — git state, the open plan step, the file it edits — joined with `;` and labelled.
+The resuming session runs this before anything else. Omit the section when the project has no real
+orientation sweep>
+
 ## Open / blockers
 - <questions or blockers, if any>
 
@@ -114,6 +120,51 @@ on the next session, so after `/clear` you continue from exactly where you left 
 ## Effort
 <low|medium|high> for step 1 — <reason>. Raise if <trigger>.
 ```
+
+### `## First call` — the resume sweep is one command, not ten
+
+Every tool call re-sends the whole context, so the orientation sweep a fresh session fires on boot
+(`git log`, `git status`, the plan, the folder maps, the file step 1 edits) is where the resume
+gives back what `/clear` just saved: ten calls cost ten copies of the window. The handoff already
+knows what the next session must look at, so it writes that sweep **as one command**.
+
+Batching is not bulk. The point is to reach the frontier of what can be known **without** the
+information still to be collected — one call goes as far as the dependencies allow, and stops
+there. What decides each piece is whether step 1 needs it, never whether it fits.
+
+**The target is total tokens; call count is only its proxy.** Many lean calls beat one bloated
+batch: a call chain A-Z where every step is filtered costs less than A-C where one step dumps a file
+nobody reads. When a piece would come back big, leave it out of the batch and fetch it later, filtered
+— or not at all.
+
+- **Budget: 8-12 pieces, at most ~12 000 chars of output.** The tool truncates the result at 50 000
+  chars (Bash) or 30 000 (PowerShell), and a truncated result loses the pieces that came after the
+  one that overflowed. Counting pieces (`wc -c`, `grep -c`, `git status --short`) cost 50-200 bytes
+  each, so twenty of those still fit; a content sample costs 1-3 KB, so about ten do.
+- **What `SessionStart` already injected does not go in the sweep.** Re-reading the `active.md` the
+  hook has just loaded is the most expensive call available: full price, zero information.
+- **Slice by marker, never by line number.** A line number has to come from an earlier call, which
+  is exactly how one question becomes three; `sed -n '/^## Next steps/,/^## /p'` and
+  `grep -n PATTERN -B 12 file` answer *where* and *what* in the same piece. Anchor on text that does
+  not change: `- [ ]` becomes `- [x]` the moment a step is done, and the slice then returns nothing,
+  silently.
+- **A piece whose size you do not know gets `head -c 400`.** `cat` of a file you have not sized is
+  how a sweep hits the truncation ceiling.
+- **Choose, do not sweep.** A piece that step 1 does not need is noise the resume pays for on every
+  turn afterwards. Four earned pieces beat twelve speculative ones — quantity is not quality.
+- **Join with `;` and label each piece** (`echo "=== plan ==="`), never `&&` — a missing file must
+  not kill the rest of the batch.
+- **Filter every piece** (`head`, `tail`, `cut`, `grep -n`, a summary flag). Trading ten calls for
+  one giant dump is worse than the ten: the dump sticks in context and is re-sent every turn after.
+- **Only independent pieces.** Anything that needs another piece's output stays out — and where a
+  second pass is unavoidable, ask for a little more in the first pass instead of splitting it in two.
+- **Read-only.** Never a build, a deploy, a migration or a write verb in a resume batch: it runs
+  before the agent has read anything, including the constraints that say what must not be touched.
+- **Real paths, runnable verbatim.** The value is that the resume does not have to work out what to
+  look at first.
+
+The same arithmetic applies during the session, not only at boot. The handoff carries it because
+boot is where it is forgotten.
 
 ## Levels: `standing.md` (persistent) · `plan.md` (optional) · `active.md` (this session)
 
