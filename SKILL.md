@@ -5,17 +5,18 @@ description: Save a compact handoff of the current session (goal, state, decisio
 
 <!-- ====================== BEGIN NAV INDEX ====================== -->
 <!-- NAV INDEX — auto-generated symbol map (refresh via the navindex skill) -->
-<!--   L21    /handoff — save session state so `/clear` is free -->
-<!--   L27    Steps -->
-<!--   L76    Format (keep under ~80 lines — a resume cue, not a log) -->
-<!--   L169   Levels: `standing.md` (persistent) · `plan.md` (optional) · `active.md` (this session) -->
-<!--   L221   Plan mode — `/handoff plan` (optional) -->
-<!--   L269   Context checkpoint (automatic) -->
-<!--   L312   Skills for the next session (always write this section) -->
-<!--   L325   Effort recommendation -->
-<!--   L354   Split mode — two agents at once (optional) -->
-<!--   L406   Navigate the history -->
-<!--   L423   Notes -->
+<!--   L22    /handoff — save session state so `/clear` is free -->
+<!--   L28    Companion skill: navindex -->
+<!--   L39    Steps -->
+<!--   L92    Format (keep under ~80 lines — a resume cue, not a log) -->
+<!--   L187   Levels: `standing.md` (persistent) · `plan.md` (optional) · `active.md` (this session) -->
+<!--   L239   Plan mode — `/handoff plan` (optional) -->
+<!--   L287   Context checkpoint (automatic) -->
+<!--   L330   Skills for the next session (always write this section) -->
+<!--   L343   Effort recommendation -->
+<!--   L373   Split mode — two agents at once (optional) -->
+<!--   L425   Navigate the history -->
+<!--   L442   Notes -->
 <!-- ======================= END NAV INDEX ======================= -->
 
 # /handoff — save session state so `/clear` is free
@@ -23,6 +24,17 @@ description: Save a compact handoff of the current session (goal, state, decisio
 Long sessions at large context are the #1 cost driver. `/clear` fixes that but loses the thread —
 this skill removes that downside: it writes a terse resume cue that the **SessionStart hook auto-loads**
 on the next session, so after `/clear` you continue from exactly where you left off.
+
+## Companion skill: navindex
+
+For repository navigation and index refreshes, use [Codyte/navindex](https://github.com/Codyte/navindex.git).
+Reuse `~/.agents/skills/navindex` if present. If missing and needed, install with
+`git clone https://github.com/Codyte/navindex.git "$HOME/.agents/skills/navindex"`, then read its
+`SKILL.md`. On Windows the shared root is `$HOME\.agents\skills`; create it if absent. Do not
+overwrite an existing directory or clone a separate copy per host; use a supported discovery
+path or junction. If unavailable, save the handoff with direct file references and note any stale
+indexes. Handoff itself is available at [Codyte/handoff](https://github.com/Codyte/handoff.git),
+normally checked out at `~/.agents/skills/handoff`. Load companion instructions only when needed.
 
 ## Steps
 
@@ -54,6 +66,10 @@ on the next session, so after `/clear` you continue from exactly where you left 
 3. **Write** the active file (path from step 1) with the sections below — terse, high-signal, no
    transcript. Overwrite it (idempotent; one active handoff per project). Splitting the work
    across two agents that run at the same time → see **Split mode** below.
+   Write agent-facing handoff files in English (`active.md`, `standing.md`, `plan.md`, and track
+   files), unless the user explicitly requests another language for those files. Preserve literal
+   names, paths, commands, quoted output, and existing historical archives. Reply to the user in
+   their language. This applies to new text; do not rewrite unrelated standing decisions.
    If `.handoff/plan.md` exists, **update it in the same breath** — tick the steps this session
    closed, each with the evidence that closed it. See **Plan mode** below; `/handoff plan` is what
    creates it in the first place.
@@ -350,7 +366,8 @@ Rules:
   front: "high if X's error contradicts its docs".
 - **Say when reasoning isn't the bottleneck at all** — if the loop is dominated by builds, network,
   a device, or a slow test suite, more thinking buys nothing. Say so in the same line.
-- **Write it in the language the user speaks**, both in the file and in the message.
+- **Write the file in English and the closing message in the user's language**, unless the user
+  explicitly requests another language for the file.
 - Split mode → one recommendation per track, since the tracks rarely need the same level.
 
 ## Split mode — two agents at once (optional)
