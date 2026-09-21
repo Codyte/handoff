@@ -1,60 +1,60 @@
 # Handoff · handoff skill · 2026-07-31
 
 ## Goal
-Checkpoint de contexto na skill `handoff`: avisar quando handoff+clear compensa, sem travar sessão.
-Repo: `c:\Users\Carlos_Ortiz\.agents\skills\handoff` (= `.claude/skills/handoff`, junction — mesmo
-diretório).
+Context checkpoint in the `handoff` skill: warn when handoff+clear pays off, without blocking the session.
+Repo: `c:\Users\Carlos_Ortiz\.agents\skills\handoff` (= `.claude/skills/handoff`, junction — same
+directory).
 
 ## State
-- HEAD: f65c9f4 — nada commitado (working tree acumula esta sessão **e** a de 2026-07-07: matcher
-  `startup|clear`, nota de idade no boot, `HEAD:` no template, fail-closed no settings).
-- Live state: os hooks já estão gravados no `~/.claude/settings.json` real (SessionStart + o novo
-  UserPromptSubmit). Sessão rodando na UI da extensão VS Code (`CLAUDE_CODE_ENTRYPOINT=claude-vscode`).
-- Done nesta sessão:
-  - `--check-context` (hook UserPromptSubmit) + `--context` (leitura manual). Silencioso: só fala se
-    ctx ≥ `CTX_WARN_AT` 120k **e** breakeven ≤ `TURNS_WARN` 8 turnos, 1x por banda de 20k
-    (estado em `~/.claude/.handoff_ctx_warn`). Nunca bloqueia; disparou de verdade a 123k.
-  - `breakeven()`: economia/turno = (ctx − boot) × preço cache-read; custo único = ctx×cr +
-    HANDOFF_OUT×out + REDERIVE×cw. Preços do `prices.json` do cache-widget (fallback embutido).
-  - `boot_context()`: primeiro turno da própria sessão (cabeça do transcript). Mede ~44k aqui.
-  - `_wire()` genérico: `--ensure-hook` fia os 2 hooks (migração/reparo/fail-closed preservados).
-  - `spawn_session()` / `--spawn` + `/handoff -f`: em VS Code devolve o atalho (Ctrl+Shift+P >
-    Claude Code: New Conversation); fora dele abre console novo com `claude`.
-  - Selftest verde (breakeven, context_tokens, entry UserPromptSubmit). navindex regenerado.
-- In progress: nada.
+- HEAD: f65c9f4 — nothing committed (the working tree accumulates this session **and** the one from
+  2026-07-07: matcher `startup|clear`, age note at boot, `HEAD:` in the template, fail-closed on settings).
+- Live state: the hooks are already written to the real `~/.claude/settings.json` (SessionStart + the
+  new UserPromptSubmit). Session running in the VS Code extension UI (`CLAUDE_CODE_ENTRYPOINT=claude-vscode`).
+- Done this session:
+  - `--check-context` (UserPromptSubmit hook) + `--context` (manual read). Silent: only speaks if
+    ctx ≥ `CTX_WARN_AT` 120k **and** breakeven ≤ `TURNS_WARN` 8 turns, once per 20k band
+    (state in `~/.claude/.handoff_ctx_warn`). Never blocks; it really fired at 123k.
+  - `breakeven()`: saving/turn = (ctx − boot) × cache-read price; one-off cost = ctx×cr +
+    HANDOFF_OUT×out + REDERIVE×cw. Prices from the cache-widget `prices.json` (built-in fallback).
+  - `boot_context()`: the session's own first turn (head of the transcript). Measures ~44k here.
+  - Generic `_wire()`: `--ensure-hook` wires both hooks (migration/repair/fail-closed preserved).
+  - `spawn_session()` / `--spawn` + `/handoff -f`: in VS Code it returns the shortcut (Ctrl+Shift+P >
+    Claude Code: New Conversation); outside it opens a new console with `claude`.
+  - Selftest green (breakeven, context_tokens, UserPromptSubmit entry). navindex regenerated.
+- In progress: nothing.
 
 ## Decisions (and why)
-- Limiar fixo NÃO decide — decide o breakeven em turnos restantes. 200k perto do fim = continuar.
-- Crescimento por turno cancela dos dois lados da conta → fora do modelo.
-- Boot medido do próprio transcript, não mediana de 10 sessões (lia 1.2MB/prompt, mesmo resultado:
-  44k vs 41k). Pedido explícito: "saudável, não cirúrgico".
-- Bug: `boot_context` lia a CAUDA do arquivo (77k inflado) — o que interessa é a CABEÇA.
-- Bug: `$0.087` no corpo do SKILL.md virava o argumento do slash-command (saiu `--spawn.087`);
-  escrito "USD 0.087". Cuidado com `$0`/`$1` em exemplos dentro de SKILL.md.
-- `/clear` automático é impossível: skill/hook não invocam comandos do harness. A extensão VS Code
-  expõe `claude-vscode.newConversation`, mas VS Code não dispara comando de extensão por CLI e a
-  extensão não registra handler `vscode://` (activationEvents só `onStartupFinished` + webview).
-  Máximo automatizável = keybinding do usuário.
-- Rejeitados (YAGNI): calibrar REDERIVE medindo sessões pós-handoff, breakeven em output tokens,
-  contar itens de `--open` como proxy de trabalho restante.
+- A fixed threshold does NOT decide — the breakeven in remaining turns does. 200k near the end = continue.
+- Growth per turn cancels on both sides of the equation → left out of the model.
+- Boot measured from the session's own transcript, not a median of 10 sessions (read 1.2MB/prompt,
+  same result: 44k vs 41k). Explicit request: "saudável, não cirúrgico" (healthy, not surgical).
+- Bug: `boot_context` read the TAIL of the file (77k, inflated) — what matters is the HEAD.
+- Bug: `$0.087` in the SKILL.md body became the slash-command argument (came out `--spawn.087`);
+  written as "USD 0.087". Beware of `$0`/`$1` in examples inside SKILL.md.
+- Automatic `/clear` is impossible: skills/hooks don't invoke harness commands. The VS Code extension
+  exposes `claude-vscode.newConversation`, but VS Code does not fire an extension command from the CLI
+  and the extension registers no `vscode://` handler (activationEvents only `onStartupFinished` +
+  webview). The most that can be automated = a user keybinding.
+- Rejected (YAGNI): calibrating REDERIVE by measuring post-handoff sessions, breakeven in output
+  tokens, counting `--open` items as a proxy for remaining work.
 
 ## Next steps (ordered)
-1. Keybinding opcional no `keybindings.json` do VS Code: tecla → `claude-vscode.newConversation`
-   (usuário escolhe a tecla; skill `keybindings-help` cobre o formato).
+1. Optional keybinding in VS Code's `keybindings.json`: key → `claude-vscode.newConversation`
+   (the user picks the key; the `keybindings-help` skill covers the format).
 2. `git add -A && git commit` (load_handoff.py, SKILL.md, README.md, __navi__.md, .handoff/);
-   conferir se `.navindex-cache.json` está no .gitignore antes do `-A`.
+   check that `.navindex-cache.json` is in .gitignore before the `-A`.
 
 ## Key files
 - load_handoff.py:252 — `breakeven()`; :244 `boot_context()`; :277 `spawn_session()`;
-  :320 `check_context()`; :172-177 constantes (CTX_WARN_AT, TURNS_WARN, HANDOFF_OUT, REDERIVE).
-- load_handoff.py:112 — `_wire()`; :147 `ensure_hook()` (os 2 hooks).
-- SKILL.md — seção "Context checkpoint (automatic)"; step 4 com `/handoff -f` + nota VS Code.
-- __navi__.md — mapa da pasta, regenerado; ler antes de busca ampla aqui.
+  :320 `check_context()`; :172-177 constants (CTX_WARN_AT, TURNS_WARN, HANDOFF_OUT, REDERIVE).
+- load_handoff.py:112 — `_wire()`; :147 `ensure_hook()` (both hooks).
+- SKILL.md — section "Context checkpoint (automatic)"; step 4 with `/handoff -f` + VS Code note.
+- __navi__.md — folder map, regenerated; read it before a broad search here.
 
 ## Open / blockers
-- Nenhum. Só o commit pendente (2 sessões acumuladas).
+- None. Only the pending commit (2 sessions accumulated).
 
 ## Effort
-low para o passo 1 — editar um JSON de keybinding com a tecla que o usuário disser; passo 2 é
-mecânico. Suba para medium se o commit exigir mexer no .gitignore ou se o settings.json real
-parecer fora do lugar. Raciocínio não é o gargalo aqui.
+low for step 1 — edit a keybinding JSON with the key the user names; step 2 is mechanical. Raise
+to medium if the commit requires touching .gitignore or if the real settings.json looks out of
+place. Reasoning is not the bottleneck here.
