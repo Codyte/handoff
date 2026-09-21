@@ -304,9 +304,9 @@ breakeven is 5x further out — the model in use is part of the answer.
 The `UserPromptSubmit` hook computes this every prompt and stays **silent** (zero tokens) unless
 context is past `CTX_WARN_AT` **and** the breakeven has fallen to `TURNS_WARN` turns or fewer, and
 then only once per 20k of further growth. It is **advisory**: it never blocks a prompt, never pauses
-work in flight. The request is answered first, then the agent says in one line which applies —
-fewer turns left than the breakeven → finish the goal, then `/handoff`; more → `/handoff` + `/clear`
-now.
+work in flight. It prints a `systemMessage`, which only the user sees: the user decides whether to
+`/clear`, and the nudge adds nothing to the model's context. (The earlier version injected it into
+the model's context: in the tia project it fired 628 times, and peak context still had a median of 186k.)
 
 Read it by hand with `load_handoff.py --context`:
 

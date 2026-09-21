@@ -444,13 +444,13 @@ def check_context(payload):
     if band <= _warn_state(session):
         return
     _warn_state(session, band)
-    print(f"# Context checkpoint (advisory, not a stop): ~{b['ctx']//1000}k tokens, "
-          f"${b['usd_per_turn_saved']:.2f}/turn wasted vs a fresh session "
-          f"(boot here measures ~{b['boot']//1000}k).\n"
-          f"/handoff + /clear pays for itself if MORE THAN ~{b['turns']} turns of work remain.\n"
-          f"Answer the user first, then say in one line: fewer turns left than that → finish the\n"
-          f"goal, then /handoff; more → suggest /handoff + /clear now. Never abandon work in\n"
-          f"flight for this — it is a cost hint, never a reason to refuse or pause a task.")
+    # systemMessage reaches the user's terminal only: the user is the one who can /clear, and the
+    # old nudge in the model's context was ignored (tia: 628 fires, peak ctx p50 still 186k) while
+    # itself being re-sent every later turn.
+    print(json.dumps({"systemMessage":
+        f"Context checkpoint: ~{b['ctx']//1000}k vs ~{b['boot']//1000}k fresh, "
+        f"~{(b['ctx'] - b['boot'])//1000}k extra re-read every turn. "
+        f"/handoff + /clear pays off if more than ~{b['turns']} turns remain."}))
 
 
 def archive_current(cwd):
