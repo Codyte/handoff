@@ -153,10 +153,9 @@ batch: a call chain A-Z where every step is filtered costs less than A-C where o
 nobody reads. When a piece would come back big, leave it out of the batch and fetch it later, filtered
 — or not at all.
 
-- **Budget: 8-12 pieces, at most ~12 000 chars of output.** The tool truncates the result at 50 000
-  chars (Bash) or 30 000 (PowerShell), and a truncated result loses the pieces that came after the
-  one that overflowed. Counting pieces (`wc -c`, `grep -c`, `git status --short`) cost 50-200 bytes
-  each, so twenty of those still fit; a content sample costs 1-3 KB, so about ten do.
+- **Budget and cap: follow the `onecall` skill** (§ The cap): the result overflows past ~30 000
+  bytes in both shells and the whole result becomes a 2 KB preview. Counting pieces (`wc -c`,
+  `grep -c`, `git status --short`) cost 50-200 bytes; a content sample costs 1-3 KB.
 - **What `SessionStart` already injected does not go in the sweep.** Re-reading the `active.md` the
   hook has just loaded is the most expensive call available: full price, zero information.
 - **Slice by marker, never by line number.** A line number has to come from an earlier call, which
