@@ -5,18 +5,18 @@ description: Save a compact handoff of the current session (goal, state, decisio
 
 <!-- ====================== BEGIN NAV INDEX ====================== -->
 <!-- NAV INDEX — auto-generated symbol map (refresh via the navindex skill) -->
-<!--   L22    /handoff — save session state so `/clear` is free -->
-<!--   L28    Companion skill: navindex -->
-<!--   L39    Steps -->
-<!--   L92    Format (keep under ~80 lines — a resume cue, not a log) -->
-<!--   L187   Levels: `standing.md` (persistent) · `plan.md` (optional) · `active.md` (this session) -->
-<!--   L239   Plan mode — `/handoff plan` (optional) -->
-<!--   L287   Context checkpoint (automatic) -->
-<!--   L330   Skills for the next session (always write this section) -->
-<!--   L343   Effort recommendation -->
-<!--   L373   Split mode — two agents at once (optional) -->
-<!--   L425   Navigate the history -->
-<!--   L442   Notes -->
+<!--   L22     346B  /handoff — save session state so `/clear` is free -->
+<!--   L28     801B  Companion skill: navindex -->
+<!--   L39     4.0K  Steps -->
+<!--   L96     5.2K  Format (keep under ~80 lines — a resume cue, not a log) -->
+<!--   L190    3.3K  Levels: `standing.md` (persistent) · `plan.md` (optional) · `active.md` (this session) -->
+<!--   L242    2.7K  Plan mode — `/handoff plan` (optional) -->
+<!--   L290    2.7K  Context checkpoint (automatic) -->
+<!--   L333    857B  Skills for the next session (always write this section) -->
+<!--   L346    2.0K  Effort recommendation -->
+<!--   L376    3.4K  Split mode — two agents at once (optional) -->
+<!--   L428    1.1K  Navigate the history -->
+<!--   L445    2.9K  Notes -->
 <!-- ======================= END NAV INDEX ======================= -->
 
 # /handoff — save session state so `/clear` is free
@@ -63,6 +63,10 @@ normally checked out at `~/.agents/skills/handoff`. Load companion instructions 
    first time it runs on an old handoff, and prints a prune nudge if `standing.md` is over its cap
    — act on both before writing the new file (see **Levels** below). An unfinished `plan.md` is
    left alone; a fully closed one is folded into the archive and cleared.
+   **If the project has `.handoff/review.md`, `--archive` prints it: run it now, before step 3,**
+   and write its result where it says. It is the project's own end-of-session checklist (tia:
+   harvest the session's CLI friction from telemetry and fix what is cheap), so each handoff
+   improves the project instead of only summarizing it. Never injected at boot; absent → no-op.
 3. **Write** the active file (path from step 1) with the sections below — terse, high-signal, no
    transcript. Overwrite it (idempotent; one active handoff per project). Splitting the work
    across two agents that run at the same time → see **Split mode** below.
@@ -446,6 +450,10 @@ of them, verify against live state (git/.env/etc.) — a handoff reflects the mo
 - `standing.md` lives beside `active.md` (same repo-local or per-machine store) and is versioned
   with the project, so a clone carries the constraints. It is auto-loaded at boot **independently**
   of the handoff — a project whose handoff was cleared still boots with its constraints.
+- `review.md` (optional) lives in the same folder, is versioned, and is written by the project,
+  not by this skill. It is read at exactly one moment, `--archive`, and never at boot, so a
+  checklist of any length costs nothing on ordinary turns. Keep it a procedure (numbered steps
+  with a command to run), not a list of past findings: those belong in the project's own docs.
 - `plan.md` (plan mode) lives in the same folder and is versioned too, so an unfinished plan
   travels with the repo — which is what lets a second machine pick up at the frontier instead of
   guessing. `--plan-path` prints its path; `--open` resumes at its first open step.

@@ -24,49 +24,51 @@ session; overwritten every handoff, archived first).
 """
 # ====================== BEGIN NAV INDEX ======================
 # NAV INDEX — auto-generated symbol map (refresh via the navindex skill)
-#   L81    _key
-#   L85    _git_root
-#   L95    handoff_file
-#   L107   track_files
-#   L115   STANDING_CAP
-#   L118   standing_file
-#   L129   plan_file
-#   L142   _PLAN_OPEN
-#   L143   _PLAN_DONE
-#   L146   plan_state
-#   L160   migrate_standing
-#   L175   standing_status
-#   L193   legacy_note
-#   L213   _archive_dir
-#   L220   _archive_files
-#   L227   _wire
-#   L262   ensure_hook
-#   L287   CTX_WARN_AT
-#   L288   CTX_WARN_STEP
-#   L289   TURNS_WARN
-#   L290   BOOT_FALLBACK
-#   L291   HANDOFF_OUT
-#   L292   REDERIVE
-#   L296   _PRICES
-#   L301   prices
-#   L312   _usage_lines
-#   L333   _tail
-#   L344   _head
-#   L352   context_tokens
-#   L359   boot_context
-#   L367   breakeven
-#   L392   spawn_session
-#   L418   _warn_state
-#   L435   check_context
-#   L456   archive_current
-#   L490   _section
-#   L497   resume_skills_note
-#   L512   history
-#   L532   open_items
-#   L554   grep
-#   L575   _selftest
-#   L723   boot_breakdown
-#   L763   main
+#   L83     101B  _key
+#   L87     337B  _git_root
+#   L97     549B  handoff_file
+#   L109    381B  track_files
+#   L117     99B  STANDING_CAP
+#   L120    629B  standing_file
+#   L131    512B  review_file
+#   L141    218B  review_note
+#   L147    739B  plan_file
+#   L160     59B  _PLAN_OPEN
+#   L161     64B  _PLAN_DONE
+#   L164    514B  plan_state
+#   L178    640B  migrate_standing
+#   L193    954B  standing_status
+#   L211    1.3K  legacy_note
+#   L231    315B  _archive_dir
+#   L238    280B  _archive_files
+#   L245    1.7K  _wire
+#   L280    1.6K  ensure_hook
+#   L305     99B  CTX_WARN_AT
+#   L306     96B  CTX_WARN_STEP
+#   L307     99B  TURNS_WARN
+#   L308     97B  BOOT_FALLBACK
+#   L309     76B  HANDOFF_OUT
+#   L310    299B  REDERIVE
+#   L314    184B  _PRICES
+#   L319    465B  prices
+#   L330    741B  _usage_lines
+#   L351    353B  _tail
+#   L362    181B  _head
+#   L370    315B  context_tokens
+#   L377    420B  boot_context
+#   L385    1.2K  breakeven
+#   L410    1.6K  spawn_session
+#   L436    610B  _warn_state
+#   L453    1.1K  check_context
+#   L474    1.6K  archive_current
+#   L508    270B  _section
+#   L515    843B  resume_skills_note
+#   L530    811B  history
+#   L550    1.2K  open_items
+#   L572   1006B  grep
+#   L593     10K  _selftest
+#   L750    1.9K  boot_breakdown
+#   L790    4.8K  main
 # ======================= END NAV INDEX =======================
 
 import sys, os, json, re, pathlib, datetime
@@ -124,6 +126,22 @@ def standing_file(cwd):
     this split exists to remove. Injected at boot ahead of the session handoff, and independently
     of it (a project with no active handoff still boots with its constraints)."""
     return handoff_file(cwd).parent / "standing.md"
+
+
+def review_file(cwd):
+    """Project-owned end-of-session checklist, next to the active handoff. Optional.
+
+    Never injected at boot: `--archive` prints it at handoff time, the one moment it applies, so it
+    costs nothing on every other turn and does not depend on the agent remembering a rule read
+    hours earlier. The project decides what it holds (tia: harvest the CLI friction of the session
+    and fix what is cheap before writing the handoff)."""
+    return handoff_file(cwd).parent / "review.md"
+
+
+def review_note(cwd):
+    f = review_file(cwd)
+    body = f.read_text(encoding="utf-8").strip() if f.exists() else ""
+    return f"--- {f.name}: run this before writing the new handoff ---\n{body}" if body else None
 
 
 def plan_file(cwd):
@@ -664,6 +682,15 @@ def _selftest():
             (pathlib.Path(td2) / ".git").mkdir()
             assert migrate_standing(td2, "# H\n## Goal\ng\n") is False
             assert not standing_file(td2).exists()
+    # review.md: absent → silent; present → printed whole, and archiving never consumes it
+    with tempfile.TemporaryDirectory() as td:
+        (pathlib.Path(td) / ".git").mkdir()
+        (pathlib.Path(td) / ".handoff").mkdir()
+        assert review_note(td) is None
+        review_file(td).write_text("1. harvest friction\n", encoding="utf-8")
+        assert "harvest friction" in review_note(td) and "review.md" in review_note(td)
+        archive_current(td)
+        assert review_file(td).exists()
     # level 0.5: the plan is optional, survives --archive while open, folds in once finished, and
     # is what --open resumes at
     with tempfile.TemporaryDirectory() as td:
@@ -794,6 +821,9 @@ def main():
         note = standing_status(cwd)
         if note:
             print(note)
+        review = review_note(cwd)
+        if review:
+            print(review)
         return
     if "--history" in sys.argv:
         print(history(os.getcwd()))
