@@ -2,11 +2,11 @@
 <!-- NAV INDEX — auto-generated symbol map (refresh via the navindex skill) -->
 <!--   L12     789B  Orchestrate mode — `/handoff orchestrate` -->
 <!--   L24     633B  Prerequisites (check once, at the first boot) -->
-<!--   L32     3.0K  The master loop -->
-<!--   L76     497B  Concurrency -->
-<!--   L83     699B  Stop rules -->
-<!--   L93     568B  Anti-patterns -->
-<!--   L101    501B  Measuring a run -->
+<!--   L32     3.3K  The master loop -->
+<!--   L80     1.5K  Concurrency — lanes -->
+<!--   L99     854B  Stop rules -->
+<!--   L111    568B  Anti-patterns -->
+<!--   L119    501B  Measuring a run -->
 <!-- ======================= END NAV INDEX ======================= -->
 
 # Orchestrate mode — `/handoff orchestrate`
@@ -45,6 +45,7 @@ Thinking belongs in rulings.
    Goal: <one or two lines: the outcome, not the method>
    Done when: <verbatim from plan.md>
    Gate: <exact command; exit 0 = done>
+   Lane: <resource | offline>  (offline = spawned with isolation: "worktree"; see Concurrency)
    Area: <files/folders it owns; entry points with path:line>
    Read first: <path:line ranges, never whole files; standing rules; prior track file if resuming>
    Do not touch: <files, resources, other tracks' territory>
@@ -76,12 +77,24 @@ Thinking belongs in rulings.
 6. **Repeat** from 1. Commit plan.md ticks with explicit paths; never `git add -A` (a worker may
    be mid-edit in the same tree).
 
-## Concurrency
-- **One worker per exclusive resource at a time**: a single-session API or device, a build output,
-  a test database, a fixed port. Name the owner in the brief; the other workers never touch it.
-- A **read-only** worker (research, reflection, reading docs, drafting text into its own new file)
-  may run beside the resource owner. Two writers in one tree only with disjoint `Area` lines.
-- Sequential steps stay sequential: parallelism that needs a merge costs more than it saves.
+## Concurrency — lanes
+- **One resource lane per exclusive resource**: a single-session API or device, a registered build
+  output, a test database, a fixed port. Its worker is the only one that touches it.
+- **Every other writer is an offline lane in its own git worktree**
+  (`Agent(subagent_type: "worker", isolation: "worktree", ...)`): no shared working tree, build
+  output or index. It builds and tests with the project's offline switches (project CLAUDE.md names
+  them, and any gitignored input to junction in), commits on its branch, never pushes.
+- **Pilot once per project** before trusting lanes: run the offline build in a worktree while the
+  resource lane works. A test that grabs the shared resource (global mutex, port, registry key)
+  shows up there; fix it first (tia 2026-09-27: a test held the live single-call mutex).
+- **Merge-friendly edits**: disjoint Areas; additions go next to related code, never all at the end
+  of a shared list; generated files are regenerated after a rebase, never hand-merged.
+- **The master merges**: rebase the lane branch onto main, rerun the offline gate if main moved,
+  then `merge --ff-only`. Git refuses rather than overwrite the resource lane's uncommitted files;
+  a refused merge waits for its next commit. The master reads and resolves code conflicts itself.
+- Read-only workers need no worktree. Sequential steps stay sequential.
+- Default cap: two offline lanes beside the resource lane; raise it when builds do not slow the
+  resource lane. Each spawn costs a boot (~44k), so split only work that runs long.
 
 ## Stop rules
 - **Worker**: the `PostToolUse --check-worker` hook adds `Worker checkpoint: ~Xk vs ~Yk fresh
@@ -89,8 +102,9 @@ Thinking belongs in rulings.
   never below ~200k (`WORKER_WARN_AT`): an efficient worker runs to 200k unstopped. The worker
   decides against its own remaining work; the master may overrule a stop with `Run to finish`.
 - **Master**: `/handoff` at a worker boundary every 2-3 worker cycles, or sooner when
-  `load_handoff.py --context` puts the breakeven at or below the turns left. Never while a worker
-  runs: its completion notification lands in the old session. plan.md already holds the ledger
+  `load_handoff.py --context` puts the breakeven at or below the turns left. Drain first: stop
+  dispatching and let running workers report, since a completion notification lands in the old
+  session. plan.md already holds the ledger
   and rulings, so the handoff is short; ask the user to `/clear`, and the next master boots on the
   plan and resumes at step 1 of the loop.
 
