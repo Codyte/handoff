@@ -43,35 +43,35 @@ session; overwritten every handoff, archived first).
 #   L241    280B  _archive_files
 #   L248    107B  _hook_flag
 #   L252    1.7K  _wire
-#   L287    1.8K  ensure_hook
-#   L314     99B  CTX_WARN_AT
-#   L315     96B  CTX_WARN_STEP
-#   L316     99B  TURNS_WARN
-#   L317     97B  BOOT_FALLBACK
-#   L318     76B  HANDOFF_OUT
-#   L319    299B  REDERIVE
-#   L323    764B  _PRICES
-#   L336    465B  prices
-#   L347    828B  _usage_lines
-#   L369    353B  _tail
-#   L380    181B  _head
-#   L388    315B  context_tokens
-#   L395    597B  boot_context
-#   L408    1.2K  breakeven
-#   L433    1.6K  spawn_session
-#   L459     64B  STATE_DIR
-#   L462    713B  _warn_state
-#   L481    1.1K  check_context
-#   L502    1.4K  check_worker
-#   L529    1.6K  archive_current
-#   L563    270B  _section
-#   L570    843B  resume_skills_note
-#   L585    811B  history
-#   L605    1.2K  open_items
-#   L627   1006B  grep
-#   L648     12K  _selftest
-#   L842    1.9K  boot_breakdown
-#   L882    4.9K  main
+#   L287    2.5K  ensure_hook
+#   L326     99B  CTX_WARN_AT
+#   L327     96B  CTX_WARN_STEP
+#   L328     99B  TURNS_WARN
+#   L329     97B  BOOT_FALLBACK
+#   L330     76B  HANDOFF_OUT
+#   L331    299B  REDERIVE
+#   L335    764B  _PRICES
+#   L348    465B  prices
+#   L359    828B  _usage_lines
+#   L381    353B  _tail
+#   L392    181B  _head
+#   L400    315B  context_tokens
+#   L407    597B  boot_context
+#   L420    1.2K  breakeven
+#   L445    1.6K  spawn_session
+#   L471     64B  STATE_DIR
+#   L474    713B  _warn_state
+#   L493    1.1K  check_context
+#   L514    1.4K  check_worker
+#   L541    1.6K  archive_current
+#   L575    270B  _section
+#   L582    843B  resume_skills_note
+#   L597    811B  history
+#   L617    1.2K  open_items
+#   L639   1006B  grep
+#   L660     12K  _selftest
+#   L855    1.9K  boot_breakdown
+#   L895    4.9K  main
 # ======================= END NAV INDEX =======================
 
 import sys, os, json, re, pathlib, datetime
@@ -289,6 +289,8 @@ def ensure_hook(settings=None):
       SessionStart (matcher startup|clear) → injects the active handoff at boot.
       UserPromptSubmit --check-context     → nudges to /handoff once context gets expensive.
       PostToolUse --check-worker           → the same nudge inside a worker (subagent), to the model.
+    Also installs agents/worker.md (orchestrate mode's worker) into <settings dir>/agents/ when it
+    is absent or differs; a project's own .claude/agents/worker.md still overrides it there.
     The skill (writer) and these hooks (readers) are separate pieces; copying the skill folder to a
     new machine does NOT bring them. Running this once on a machine wires them. Writes THIS file's
     absolute path → each machine self-registers a command valid for its own home dir (no hardcoded
@@ -297,6 +299,16 @@ def ensure_hook(settings=None):
     would re-inject the handoff for nothing. Pre-matcher installs are migrated in place."""
     settings = settings or pathlib.Path(os.path.expanduser("~")) / ".claude" / "settings.json"
     base = f'python "{os.path.abspath(__file__)}"'
+    src = pathlib.Path(os.path.abspath(__file__)).parent / "agents" / "worker.md"
+    dst = settings.parent / "agents" / "worker.md"
+    agent = "worker agent: present"
+    try:
+        if src.exists() and (not dst.exists() or dst.read_bytes() != src.read_bytes()):
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_bytes(src.read_bytes())
+            agent = "worker agent: installed"
+    except OSError:
+        agent = "worker agent: copy failed"
     try:
         data = json.loads(settings.read_text(encoding="utf-8")) if settings.exists() else {}
         msgs = [_wire(data, "SessionStart", "startup|clear", base),
@@ -308,7 +320,7 @@ def ensure_hook(settings=None):
         # fail closed: unreadable JSON or an unexpected shape must never corrupt settings.json
         print("settings.json unreadable or unexpected shape — left untouched; add the hooks by hand")
         return
-    print(" | ".join(msgs) + f" -> {base}")
+    print(" | ".join(msgs + [agent]) + f" -> {base}")
 
 
 CTX_WARN_AT = 120_000        # floor: below this a nudge is noise even if breakeven says otherwise
@@ -671,6 +683,7 @@ def _selftest():
         assert "matcher" not in ups[0] and "--check-context" in ups[0]["hooks"][0]["command"], ups
         ptu = json.loads(s.read_text(encoding="utf-8"))["hooks"]["PostToolUse"]
         assert len(ptu) == 1 and "--check-worker" in ptu[0]["hooks"][0]["command"], ptu
+        assert (pathlib.Path(td) / "agents" / "worker.md").exists()   # installed beside settings
         ensure_hook(s)  # rerun: each flag keeps its own single entry
         h = json.loads(s.read_text(encoding="utf-8"))["hooks"]
         assert len(h["UserPromptSubmit"]) == 1 and len(h["PostToolUse"]) == 1, h
