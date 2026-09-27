@@ -49,26 +49,26 @@ session; overwritten every handoff, archived first).
 #   L308     97B  BOOT_FALLBACK
 #   L309     76B  HANDOFF_OUT
 #   L310    299B  REDERIVE
-#   L314    184B  _PRICES
-#   L319    465B  prices
-#   L330    741B  _usage_lines
-#   L351    353B  _tail
-#   L362    181B  _head
-#   L370    315B  context_tokens
-#   L377    420B  boot_context
-#   L385    1.2K  breakeven
-#   L410    1.6K  spawn_session
-#   L436    610B  _warn_state
-#   L453    1.1K  check_context
-#   L474    1.6K  archive_current
-#   L508    270B  _section
-#   L515    843B  resume_skills_note
-#   L530    811B  history
-#   L550    1.2K  open_items
-#   L572   1006B  grep
-#   L593     10K  _selftest
-#   L750    1.9K  boot_breakdown
-#   L790    4.8K  main
+#   L314    764B  _PRICES
+#   L327    465B  prices
+#   L338    741B  _usage_lines
+#   L359    353B  _tail
+#   L370    181B  _head
+#   L378    315B  context_tokens
+#   L385    569B  boot_context
+#   L398    1.2K  breakeven
+#   L423    1.6K  spawn_session
+#   L449    610B  _warn_state
+#   L466    1.1K  check_context
+#   L487    1.6K  archive_current
+#   L521    270B  _section
+#   L528    843B  resume_skills_note
+#   L543    811B  history
+#   L563    1.2K  open_items
+#   L585   1006B  grep
+#   L606     10K  _selftest
+#   L763    1.9K  boot_breakdown
+#   L803    4.8K  main
 # ======================= END NAV INDEX =======================
 
 import sys, os, json, re, pathlib, datetime
@@ -311,9 +311,17 @@ REDERIVE = 8_000             # tokens the fresh session re-reads to get back on 
 
 # USD per token: cache-read / cache-write / output. Matched by substring of the model id, same
 # table the cache widget bills from — read its prices.json when present so there is one source.
-_PRICES = {"opus":   {"cr": 1.50, "cw": 18.75, "out": 75.0},
-           "sonnet": {"cr": 0.30, "cw": 3.75,  "out": 15.0},
-           "haiku":  {"cr": 0.10, "cw": 1.25,  "out": 5.0}}
+_PRICES = {"opus-5-5":  {"cr": 0.20, "cw": 5.00,  "out": 20.0},   # version keys first:
+           "opus-5":    {"cr": 0.50, "cw": 6.25,  "out": 25.0},   # the first substring match wins
+           "opus-4-8":  {"cr": 0.50, "cw": 6.25,  "out": 25.0},
+           "opus-4-7":  {"cr": 0.50, "cw": 6.25,  "out": 25.0},
+           "opus-4-6":  {"cr": 0.50, "cw": 6.25,  "out": 25.0},
+           "opus-4-5":  {"cr": 0.50, "cw": 6.25,  "out": 25.0},
+           "fable-5-1": {"cr": 0.25, "cw": 12.50, "out": 50.0},
+           "sonnet-5":  {"cr": 0.20, "cw": 2.50,  "out": 10.0},
+           "opus":      {"cr": 1.50, "cw": 18.75, "out": 75.0},
+           "sonnet":    {"cr": 0.30, "cw": 3.75,  "out": 15.0},
+           "haiku":     {"cr": 0.10, "cw": 1.25,  "out": 5.0}}
 
 
 def prices(model):
@@ -378,8 +386,13 @@ def boot_context(transcript):
     """What a /clear here restarts from: this session's own FIRST assistant turn (system prompt +
     skills + any injected handoff). Head of the same file we already read — no scan of past
     sessions; a rough number in the right order of magnitude is all the breakeven needs."""
-    lines = _usage_lines(_head(transcript, 131_072))
-    return lines[0][0] if lines else BOOT_FALLBACK
+    n = 131_072
+    while n <= 4_194_304:             # injected attachments can push the first turn past 128 KB
+        lines = _usage_lines(_head(transcript, n))
+        if lines:
+            return lines[0][0]
+        n *= 2
+    return BOOT_FALLBACK
 
 
 def breakeven(transcript):
