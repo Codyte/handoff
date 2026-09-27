@@ -341,6 +341,11 @@ TURNS_WARN = 8               # nudge once handoff pays for itself within this ma
 BOOT_FALLBACK = 20_000       # assumed post-/clear context when this project has no measured one
 HANDOFF_OUT = 2_000          # output tokens the handoff turn itself writes
 REDERIVE = 8_000             # tokens the fresh session re-reads to get back on the thread (cache-write)
+# A fresh worker resumed from a track file re-reads its working set before its first edit.
+# Measured 2026-09-27 (2 resumed tia workers): first edit at request 6-11, context 73-85k from
+# a 48k boot. REDERIVE alone put the w3 stop at 126k ("7 turns"); the measured ramp puts it at ~40.
+WORKER_REREAD = 35_000       # working set re-read and cache-written by the fresh worker
+WORKER_RAMP = 8 * 65_000     # its ramp requests before the first edit, as cache reads
 
 # USD per token: cache-read / cache-write / output. Matched by substring of the model id, same
 # table the cache widget bills from — read its prices.json when present so there is one source.
@@ -445,10 +450,12 @@ def breakeven(transcript, sidechain=False):
     ctx, model = lines[-1]
     boot = boot_context(transcript, sidechain)
     p = prices(model)
-    if ctx <= boot:
+    reread, ramp = (WORKER_REREAD, WORKER_RAMP) if sidechain else (REDERIVE, 0)
+    settled = boot + (reread if sidechain else 0)   # a fresh worker settles past boot, not at it
+    if ctx <= settled:
         return None
-    cost = ctx * p["cr"] + HANDOFF_OUT * p["out"] + REDERIVE * p["cw"]
-    saving = (ctx - boot) * p["cr"]
+    cost = ctx * p["cr"] + HANDOFF_OUT * p["out"] + reread * p["cw"] + ramp * p["cr"]
+    saving = (ctx - settled) * p["cr"]
     return {"ctx": ctx, "boot": boot, "model": model or "?",
             "turns": max(1, round(cost / saving)),
             "usd_per_turn_saved": round(saving, 4)}
@@ -866,9 +873,9 @@ def _selftest():
                 return json.dumps({"isSidechain": True, "message": {
                     "model": "claude-opus-5-5", "usage": {"cache_read_input_tokens": n}}})
             (pathlib.Path(td) / "S" / "subagents" / "agent-X.jsonl").write_text(
-                row(44_000) + "\n" + row(210_000) + "\n", encoding="utf-8")
+                row(44_000) + "\n" + row(400_000) + "\n", encoding="utf-8")
             (pathlib.Path(td) / "S" / "subagents" / "agent-Y.jsonl").write_text(
-                row(44_000) + "\n" + row(190_000) + "\n", encoding="utf-8")
+                row(44_000) + "\n" + row(250_000) + "\n", encoding="utf-8")
 
             def run(payload):
                 buf = io.StringIO()
@@ -879,11 +886,11 @@ def _selftest():
             assert run(base) == ""                                  # main thread → silent
             out = json.loads(run({**base, "agent_id": "X"}))["hookSpecificOutput"]
             assert out["hookEventName"] == "PostToolUse", out
-            assert "~210k vs ~44k fresh worker" in out["additionalContext"], out
+            assert "~400k vs ~44k fresh worker" in out["additionalContext"], out
             assert run({**base, "agent_id": "X"}) == ""             # same band → once
             seen = json.loads((STATE_DIR / ".handoff_worker_seen").read_text(encoding="utf-8"))
             assert seen == {"S:X": True}, seen
-            assert run({**base, "agent_id": "Y"}) == ""             # under the 200k floor → runs on
+            assert run({**base, "agent_id": "Y"}) == ""             # 250k: ramp makes it ~11 turns → runs on
         finally:
             STATE_DIR = keep
     print("selftest ok")
