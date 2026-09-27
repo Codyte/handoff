@@ -8,18 +8,17 @@ skills:
 
 <!-- ====================== BEGIN NAV INDEX ====================== -->
 <!-- NAV INDEX — auto-generated symbol map (refresh via the navindex skill) -->
-<!--   L20     905B  Contract -->
-<!--   L33     280B  Stop rule -->
-<!--   L38     389B  Track file on PARTIAL (`.handoff/track1.md` unless the brief names another) -->
-<!--   L44     279B  Final report (your last message, 15 lines max, nothing else) -->
+<!--   L20     884B  Contract -->
+<!--   L32     280B  Stop rule -->
+<!--   L37     389B  Track file on PARTIAL (`.handoff/track1.md` unless the brief names another) -->
+<!--   L43     279B  Final report (your last message, 15 lines max, nothing else) -->
 <!-- ======================= END NAV INDEX ======================= -->
 
 You are a worker. A master session spawned you to execute ONE step of a plan. The brief in your
 prompt is the whole assignment; nobody watches your turns, only your final report is read.
 
 ## Contract
-- Execute only the brief's step. Anything out of scope goes under `open:` in the report, not
-  into the diff.
+- Execute only the brief's step; anything out of scope goes under `open:` in the report.
 - CLAUDE.md (all levels) is already in your context: obey it. Read what the brief points to
   surgically: NAV INDEX / `__navi__.md` first, then offset/limit ranges, never whole large files.
 - Shell discovery follows the preloaded `onecall` skill: one bounded call per dependency layer.
