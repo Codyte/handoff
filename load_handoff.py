@@ -24,51 +24,54 @@ session; overwritten every handoff, archived first).
 """
 # ====================== BEGIN NAV INDEX ======================
 # NAV INDEX — auto-generated symbol map (refresh via the navindex skill)
-#   L83     101B  _key
-#   L87     337B  _git_root
-#   L97     549B  handoff_file
-#   L109    381B  track_files
-#   L117     99B  STANDING_CAP
-#   L120    629B  standing_file
-#   L131    512B  review_file
-#   L141    218B  review_note
-#   L147    739B  plan_file
-#   L160     59B  _PLAN_OPEN
-#   L161     64B  _PLAN_DONE
-#   L164    514B  plan_state
-#   L178    640B  migrate_standing
-#   L193    954B  standing_status
-#   L211    1.3K  legacy_note
-#   L231    315B  _archive_dir
-#   L238    280B  _archive_files
-#   L245    1.7K  _wire
-#   L280    1.6K  ensure_hook
-#   L305     99B  CTX_WARN_AT
-#   L306     96B  CTX_WARN_STEP
-#   L307     99B  TURNS_WARN
-#   L308     97B  BOOT_FALLBACK
-#   L309     76B  HANDOFF_OUT
-#   L310    299B  REDERIVE
-#   L314    764B  _PRICES
-#   L327    465B  prices
-#   L338    741B  _usage_lines
-#   L359    353B  _tail
-#   L370    181B  _head
-#   L378    315B  context_tokens
-#   L385    569B  boot_context
-#   L398    1.2K  breakeven
-#   L423    1.6K  spawn_session
-#   L449    610B  _warn_state
-#   L466    1.1K  check_context
-#   L487    1.6K  archive_current
-#   L521    270B  _section
-#   L528    843B  resume_skills_note
-#   L543    811B  history
-#   L563    1.2K  open_items
-#   L585   1006B  grep
-#   L606     10K  _selftest
-#   L763    1.9K  boot_breakdown
-#   L803    4.8K  main
+#   L86     101B  _key
+#   L90     337B  _git_root
+#   L100    549B  handoff_file
+#   L112    381B  track_files
+#   L120     99B  STANDING_CAP
+#   L123    629B  standing_file
+#   L134    512B  review_file
+#   L144    218B  review_note
+#   L150    739B  plan_file
+#   L163     59B  _PLAN_OPEN
+#   L164     64B  _PLAN_DONE
+#   L167    514B  plan_state
+#   L181    640B  migrate_standing
+#   L196    954B  standing_status
+#   L214    1.3K  legacy_note
+#   L234    315B  _archive_dir
+#   L241    280B  _archive_files
+#   L248    107B  _hook_flag
+#   L252    1.7K  _wire
+#   L287    1.8K  ensure_hook
+#   L314     99B  CTX_WARN_AT
+#   L315     96B  CTX_WARN_STEP
+#   L316     99B  TURNS_WARN
+#   L317     97B  BOOT_FALLBACK
+#   L318     76B  HANDOFF_OUT
+#   L319    299B  REDERIVE
+#   L323    764B  _PRICES
+#   L336    465B  prices
+#   L347    828B  _usage_lines
+#   L369    353B  _tail
+#   L380    181B  _head
+#   L388    315B  context_tokens
+#   L395    597B  boot_context
+#   L408    1.2K  breakeven
+#   L433    1.6K  spawn_session
+#   L459     64B  STATE_DIR
+#   L462    713B  _warn_state
+#   L481    1.1K  check_context
+#   L502    1.4K  check_worker
+#   L529    1.6K  archive_current
+#   L563    270B  _section
+#   L570    843B  resume_skills_note
+#   L585    811B  history
+#   L605    1.2K  open_items
+#   L627   1006B  grep
+#   L648     12K  _selftest
+#   L842    1.9K  boot_breakdown
+#   L882    4.9K  main
 # ======================= END NAV INDEX =======================
 
 import sys, os, json, re, pathlib, datetime
@@ -242,6 +245,10 @@ def _archive_files(cwd):
     return sorted(arc_dir.glob("*.md")) if arc_dir.exists() else []
 
 
+def _hook_flag(cmd):
+    return next((f for f in ("--check-context", "--check-worker") if f in cmd), "")
+
+
 def _wire(data, event, matcher, cmd):
     """Idempotently put `cmd` in hooks.<event>, under `matcher` (None = no matcher key).
     Returns a short status string. Mutates `data`."""
@@ -252,7 +259,7 @@ def _wire(data, event, matcher, cmd):
         # match by filename+flags → finds our entry even after a moved home dir or skill folder
         ours = [h for h in entry.get("hooks") or [] if isinstance(h, dict)
                 and "load_handoff.py" in (h.get("command") or "")
-                and ("--check-context" in h["command"]) == ("--check-context" in cmd)]
+                and _hook_flag(h["command"]) == _hook_flag(cmd)]
         if not ours:
             continue
         if entry.get("matcher") == matcher and all(h["command"] == cmd for h in ours):
@@ -278,9 +285,10 @@ def _wire(data, event, matcher, cmd):
 
 
 def ensure_hook(settings=None):
-    """Idempotently register the two hooks this skill needs:
+    """Idempotently register the three hooks this skill needs:
       SessionStart (matcher startup|clear) → injects the active handoff at boot.
       UserPromptSubmit --check-context     → nudges to /handoff once context gets expensive.
+      PostToolUse --check-worker           → the same nudge inside a worker (subagent), to the model.
     The skill (writer) and these hooks (readers) are separate pieces; copying the skill folder to a
     new machine does NOT bring them. Running this once on a machine wires them. Writes THIS file's
     absolute path → each machine self-registers a command valid for its own home dir (no hardcoded
@@ -292,7 +300,8 @@ def ensure_hook(settings=None):
     try:
         data = json.loads(settings.read_text(encoding="utf-8")) if settings.exists() else {}
         msgs = [_wire(data, "SessionStart", "startup|clear", base),
-                _wire(data, "UserPromptSubmit", None, base + " --check-context")]
+                _wire(data, "UserPromptSubmit", None, base + " --check-context"),
+                _wire(data, "PostToolUse", None, base + " --check-worker")]
         settings.parent.mkdir(parents=True, exist_ok=True)
         settings.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     except Exception:
@@ -335,15 +344,16 @@ def prices(model):
     return {k: row[k] / 1e6 for k in ("cr", "cw", "out")}
 
 
-def _usage_lines(text):
-    """(input-side tokens, model) per non-sidechain assistant turn in `text`, in file order."""
+def _usage_lines(text, sidechain=False):
+    """(input-side tokens, model) per assistant turn in `text`, in file order. Main transcripts
+    skip sidechain turns (sub-agents have their own context); a worker's file is all sidechain."""
     out = []
     for line in text.splitlines():
         if '"usage"' not in line:
             continue
         try:
             obj = json.loads(line)
-            if obj.get("isSidechain"):        # sub-agent turns have their own context
+            if bool(obj.get("isSidechain")) != sidechain:
                 continue
             msg = obj.get("message") or {}
             u = msg.get("usage") or {}
@@ -382,20 +392,20 @@ def context_tokens(transcript):
     return lines[-1][0] if lines else None
 
 
-def boot_context(transcript):
+def boot_context(transcript, sidechain=False):
     """What a /clear here restarts from: this session's own FIRST assistant turn (system prompt +
     skills + any injected handoff). Head of the same file we already read — no scan of past
     sessions; a rough number in the right order of magnitude is all the breakeven needs."""
     n = 131_072
     while n <= 4_194_304:             # injected attachments can push the first turn past 128 KB
-        lines = _usage_lines(_head(transcript, n))
+        lines = _usage_lines(_head(transcript, n), sidechain)
         if lines:
             return lines[0][0]
         n *= 2
     return BOOT_FALLBACK
 
 
-def breakeven(transcript):
+def breakeven(transcript, sidechain=False):
     """How many more turns of work must remain for /handoff + /clear to be cheaper than continuing.
 
     Per turn, continuing re-sends the whole context: ctx x cache-read. After a handoff the same
@@ -405,11 +415,11 @@ def breakeven(transcript):
     re-reads to get back on the thread.
         turns = (ctx*cr + HANDOFF_OUT*out + REDERIVE*cw) / ((ctx - boot) * cr)
     Fewer turns remaining than that -> finishing here is the cheap move, however big the context."""
-    lines = _usage_lines(_tail(transcript))
+    lines = _usage_lines(_tail(transcript), sidechain)
     if not lines:
         return None
     ctx, model = lines[-1]
-    boot = boot_context(transcript)
+    boot = boot_context(transcript, sidechain)
     p = prices(model)
     if ctx <= boot:
         return None
@@ -446,15 +456,20 @@ def spawn_session(cwd=None):
     return f"new session started in {cwd} — it boots with the handoff; /clear or close this one"
 
 
-def _warn_state(session, band=None):
-    """Last warned band per session, in ~/.claude/.handoff_ctx_warn. Read with band=None."""
-    p = pathlib.Path(os.path.expanduser("~")) / ".claude" / ".handoff_ctx_warn"
+STATE_DIR = pathlib.Path(os.path.expanduser("~")) / ".claude"
+
+
+def _warn_state(session, band=None, fname=".handoff_ctx_warn"):
+    """Per-session value in STATE_DIR/fname (default: last warned band). Read with band=None."""
+    p = STATE_DIR / fname
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
     except Exception:
         data = {}
     if band is None:
         return data.get(session, 0)
+    if data.get(session) == band:
+        return                                  # unchanged → no write on every tool call
     try:
         # keep the file from growing forever: only the 20 most recent sessions
         data[session] = band
@@ -482,6 +497,33 @@ def check_context(payload):
         f"Context checkpoint: ~{b['ctx']//1000}k vs ~{b['boot']//1000}k fresh, "
         f"~{(b['ctx'] - b['boot'])//1000}k extra re-read every turn. "
         f"/handoff + /clear pays off if more than ~{b['turns']} turns remain."}))
+
+
+def check_worker(payload):
+    """PostToolUse hook, the worker side of check_context. The hook fires inside subagents too
+    (payload carries agent_id); the main thread is left to check_context. Reads the worker's own
+    transcript and, since no user watches a worker, tells the MODEL to write a track file and stop
+    once a fresh worker would be cheaper for the turns left. Records whether the transcript was
+    found in STATE_DIR/.handoff_worker_seen, so a live run can prove the path is right."""
+    agent = payload.get("agent_id")
+    if not agent:
+        return
+    t = pathlib.Path(payload.get("transcript_path") or "")
+    if not t.name.startswith("agent-"):          # the parent's transcript → derive the worker's
+        t = t.with_suffix("") / "subagents" / f"agent-{agent}.jsonl"
+    key = f"{payload.get('session_id') or '?'}:{agent}"
+    _warn_state(key, t.exists(), ".handoff_worker_seen")
+    b = breakeven(t, sidechain=True)
+    if not b or b["ctx"] < CTX_WARN_AT or b["turns"] > TURNS_WARN:
+        return
+    band = b["ctx"] // CTX_WARN_STEP
+    if band <= _warn_state(key):
+        return
+    _warn_state(key, band)
+    print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext":
+        f"Worker checkpoint: ~{b['ctx']//1000}k vs ~{b['boot']//1000}k fresh worker. "
+        f"More than ~{b['turns']} turns left: write .handoff/track1.md and stop with PARTIAL. "
+        "Otherwise finish."}}))
 
 
 def archive_current(cwd):
@@ -627,6 +669,11 @@ def _selftest():
         assert ss[0]["matcher"] == "startup|clear", ss
         ups = json.loads(s.read_text(encoding="utf-8"))["hooks"]["UserPromptSubmit"]
         assert "matcher" not in ups[0] and "--check-context" in ups[0]["hooks"][0]["command"], ups
+        ptu = json.loads(s.read_text(encoding="utf-8"))["hooks"]["PostToolUse"]
+        assert len(ptu) == 1 and "--check-worker" in ptu[0]["hooks"][0]["command"], ptu
+        ensure_hook(s)  # rerun: each flag keeps its own single entry
+        h = json.loads(s.read_text(encoding="utf-8"))["hooks"]
+        assert len(h["UserPromptSubmit"]) == 1 and len(h["PostToolUse"]) == 1, h
         del ss[0]["matcher"]
         s.write_text(json.dumps({"hooks": {"SessionStart": ss}}), encoding="utf-8")
         ensure_hook(s)
@@ -757,6 +804,38 @@ def _selftest():
         assert big["boot"] == 20_000, big                   # first turn of the session, not last
         assert 1 <= big["turns"] < small["turns"], (big, small)
         assert mk("c.jsonl", 20_000) is None                # at boot → nothing left to save
+    # check_worker: silent on the main thread; inside a worker it reads the worker's own
+    # (sidechain) transcript, records finding it, and nudges the model once per band
+    global STATE_DIR
+    import contextlib, io
+    with tempfile.TemporaryDirectory() as td:
+        keep, STATE_DIR = STATE_DIR, pathlib.Path(td)
+        try:
+            main_t = pathlib.Path(td) / "S.jsonl"
+            main_t.write_text("", encoding="utf-8")
+            (pathlib.Path(td) / "S" / "subagents").mkdir(parents=True)
+
+            def row(n):
+                return json.dumps({"isSidechain": True, "message": {
+                    "model": "claude-opus-5-5", "usage": {"cache_read_input_tokens": n}}})
+            (pathlib.Path(td) / "S" / "subagents" / "agent-X.jsonl").write_text(
+                row(44_000) + "\n" + row(190_000) + "\n", encoding="utf-8")
+
+            def run(payload):
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    check_worker(payload)
+                return buf.getvalue()
+            base = {"session_id": "S", "transcript_path": str(main_t)}
+            assert run(base) == ""                                  # main thread → silent
+            out = json.loads(run({**base, "agent_id": "X"}))["hookSpecificOutput"]
+            assert out["hookEventName"] == "PostToolUse", out
+            assert "~190k vs ~44k fresh worker" in out["additionalContext"], out
+            assert run({**base, "agent_id": "X"}) == ""             # same band → once
+            seen = json.loads((STATE_DIR / ".handoff_worker_seen").read_text(encoding="utf-8"))
+            assert seen == {"S:X": True}, seen
+        finally:
+            STATE_DIR = keep
     print("selftest ok")
 
 
@@ -844,12 +923,12 @@ def main():
     if "--spawn" in sys.argv:
         print(spawn_session())
         return
-    if "--check-context" in sys.argv:
+    if "--check-context" in sys.argv or "--check-worker" in sys.argv:
         try:
             payload = json.load(sys.stdin)
         except Exception:
             payload = {}
-        check_context(payload)
+        (check_worker if "--check-worker" in sys.argv else check_context)(payload)
         return
     if "--context" in sys.argv:
         # manual read: newest transcript of this project (the current session)
