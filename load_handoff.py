@@ -24,54 +24,55 @@ session; overwritten every handoff, archived first).
 """
 # ====================== BEGIN NAV INDEX ======================
 # NAV INDEX — auto-generated symbol map (refresh via the navindex skill)
-#   L86     101B  _key
-#   L90     337B  _git_root
-#   L100    549B  handoff_file
-#   L112    381B  track_files
-#   L120     99B  STANDING_CAP
-#   L123    629B  standing_file
-#   L134    512B  review_file
-#   L144    218B  review_note
-#   L150    739B  plan_file
-#   L163     59B  _PLAN_OPEN
-#   L164     64B  _PLAN_DONE
-#   L167    514B  plan_state
-#   L181    640B  migrate_standing
-#   L196    954B  standing_status
-#   L214    1.3K  legacy_note
-#   L234    315B  _archive_dir
-#   L241    280B  _archive_files
-#   L248    107B  _hook_flag
-#   L252    1.7K  _wire
-#   L287    2.5K  ensure_hook
-#   L326     99B  CTX_WARN_AT
-#   L327     96B  CTX_WARN_STEP
-#   L328     99B  TURNS_WARN
-#   L329     97B  BOOT_FALLBACK
-#   L330     76B  HANDOFF_OUT
-#   L331    299B  REDERIVE
-#   L335    764B  _PRICES
-#   L348    465B  prices
-#   L359    828B  _usage_lines
-#   L381    353B  _tail
-#   L392    181B  _head
-#   L400    315B  context_tokens
-#   L407    597B  boot_context
-#   L420    1.2K  breakeven
-#   L445    1.6K  spawn_session
-#   L471     64B  STATE_DIR
-#   L474    713B  _warn_state
-#   L493    1.1K  check_context
-#   L514    1.4K  check_worker
-#   L541    1.6K  archive_current
-#   L575    270B  _section
-#   L582    843B  resume_skills_note
-#   L597    811B  history
-#   L617    1.2K  open_items
-#   L639   1006B  grep
-#   L660     12K  _selftest
-#   L855    1.9K  boot_breakdown
-#   L895    4.9K  main
+#   L87     101B  _key
+#   L91     337B  _git_root
+#   L101    549B  handoff_file
+#   L113    381B  track_files
+#   L121     99B  STANDING_CAP
+#   L124    629B  standing_file
+#   L135    512B  review_file
+#   L145    218B  review_note
+#   L151    739B  plan_file
+#   L164     59B  _PLAN_OPEN
+#   L165     64B  _PLAN_DONE
+#   L168    514B  plan_state
+#   L182    640B  migrate_standing
+#   L197    954B  standing_status
+#   L215    1.3K  legacy_note
+#   L235    315B  _archive_dir
+#   L242    280B  _archive_files
+#   L249    107B  _hook_flag
+#   L253    472B  _same_cmd
+#   L262    1.8K  _wire
+#   L298    2.5K  ensure_hook
+#   L337     99B  CTX_WARN_AT
+#   L338     96B  CTX_WARN_STEP
+#   L339     99B  TURNS_WARN
+#   L340     97B  BOOT_FALLBACK
+#   L341     76B  HANDOFF_OUT
+#   L342    299B  REDERIVE
+#   L346    764B  _PRICES
+#   L359    465B  prices
+#   L370    828B  _usage_lines
+#   L392    353B  _tail
+#   L403    181B  _head
+#   L411    315B  context_tokens
+#   L418    597B  boot_context
+#   L431    1.2K  breakeven
+#   L456    1.6K  spawn_session
+#   L482     64B  STATE_DIR
+#   L485    713B  _warn_state
+#   L504    1.1K  check_context
+#   L525    1.4K  check_worker
+#   L552    1.8K  archive_current
+#   L589    270B  _section
+#   L596    843B  resume_skills_note
+#   L611    811B  history
+#   L631    1.2K  open_items
+#   L653   1006B  grep
+#   L674     13K  _selftest
+#   L888    1.9K  boot_breakdown
+#   L928    4.9K  main
 # ======================= END NAV INDEX =======================
 
 import sys, os, json, re, pathlib, datetime
@@ -249,6 +250,15 @@ def _hook_flag(cmd):
     return next((f for f in ("--check-context", "--check-worker") if f in cmd), "")
 
 
+def _same_cmd(a, b):
+    """Equal after resolving each quoted path (realpath follows symlinks and Windows junctions), so
+    a run via ~/.claude/skills/handoff and one via ~/.agents/skills/handoff (one checkout, two
+    discovery paths) agree instead of rewriting each other's hooks."""
+    norm = lambda c: re.sub(r'"([^"]+)"',
+                            lambda m: '"' + os.path.normcase(os.path.realpath(m.group(1))) + '"', c)
+    return a == b or norm(a) == norm(b)
+
+
 def _wire(data, event, matcher, cmd):
     """Idempotently put `cmd` in hooks.<event>, under `matcher` (None = no matcher key).
     Returns a short status string. Mutates `data`."""
@@ -262,10 +272,11 @@ def _wire(data, event, matcher, cmd):
                 and _hook_flag(h["command"]) == _hook_flag(cmd)]
         if not ours:
             continue
-        if entry.get("matcher") == matcher and all(h["command"] == cmd for h in ours):
-            return f"{event}: already present"
+        if entry.get("matcher") == matcher and all(_same_cmd(h["command"], cmd) for h in ours):
+            return f"{event}: already present"   # the registered path is kept
         for h in ours:
-            h["command"] = cmd                   # repair a stale path from a moved install
+            if not _same_cmd(h["command"], cmd):
+                h["command"] = cmd               # repair a stale path from a moved install
         if len(entry["hooks"]) == len(ours):
             if matcher is None:
                 entry.pop("matcher", None)
@@ -567,8 +578,11 @@ def archive_current(cwd):
     stamp = datetime.datetime.now().strftime("%Y-%m-%dT%H%M%S")
     dest = arc_dir / (stamp + ".md")
     dest.write_text(txt + "\n", encoding="utf-8")
-    for t in tracks:
-        t.unlink()
+    # An open plan means orchestrate mode may have a worker resuming from a track file: copy it,
+    # never delete it. ponytail: a split handoff with an open plan keeps stale tracks; delete by hand.
+    if not (pl and pl[1]):
+        for t in tracks:
+            t.unlink()
     return dest
 
 
@@ -707,6 +721,21 @@ def _selftest():
         ensure_hook(s)
         ss = json.loads(s.read_text(encoding="utf-8"))["hooks"]["SessionStart"]
         assert ss[1]["hooks"][0]["command"] == f'python "{os.path.abspath(__file__)}"', ss
+        # one checkout behind two paths (junction/symlink): the registered path is kept, not
+        # rewritten back and forth by whichever path ran --ensure-hook last
+        real, alias = pathlib.Path(td) / "real", pathlib.Path(td) / "alias"
+        real.mkdir()
+        (real / "load_handoff.py").write_text("", encoding="utf-8")
+        try:
+            os.symlink(real, alias, target_is_directory=True)
+        except OSError:                          # Windows without symlink rights → junction
+            import _winapi
+            _winapi.CreateJunction(str(real), str(alias))
+        via = f'python "{alias / "load_handoff.py"}" --check-worker'
+        d = {"hooks": {"PostToolUse": [{"hooks": [{"type": "command", "command": via}]}]}}
+        assert _wire(d, "PostToolUse", None,
+                     f'python "{real / "load_handoff.py"}" --check-worker').endswith("already present")
+        assert d["hooks"]["PostToolUse"][0]["hooks"][0]["command"] == via, d
         # unexpected shape (valid JSON, wrong structure) → fail closed, file untouched
         s.write_text('{"hooks": null}', encoding="utf-8")
         ensure_hook(s)
@@ -782,14 +811,18 @@ def _selftest():
         out = open_items(td)
         assert out.startswith("**Plan — resume at:** 2. escrever"), out
         assert "1 done, 2 open" in out, out
-        archive_current(td)
+        tr = handoff_file(td).parent / "track1.md"
+        tr.write_text("# T1\n## Next steps\n1. resume here\n", encoding="utf-8")
+        arc = archive_current(td)
         assert plan_file(td).exists()                          # unfinished plan is never eaten
+        assert "resume here" in arc.read_text(encoding="utf-8") and tr.exists()  # worker's resume file kept
         plan_file(td).write_text("# Plano\n\n- [x] 1. tudo — done when: pronto\n", encoding="utf-8")
         assert plan_state(td)[1] == []                         # no open step → finished
         handoff_file(td).write_text("# H2\n## Goal\nfim\n", encoding="utf-8")
         arc = archive_current(td)
         assert "plan.md (completed)" in arc.read_text(encoding="utf-8")
         assert not plan_file(td).exists()                      # …folded in and cleared
+        assert not tr.exists()                                 # plan closed → tracks cleared again
     # context_tokens: last non-sidechain usage line wins, all three input fields summed
     with tempfile.TemporaryDirectory() as td:
         t = pathlib.Path(td) / "t.jsonl"

@@ -14,9 +14,9 @@ description: Save a compact handoff of the current session (goal, state, decisio
 <!--   L293    2.7K  Context checkpoint (automatic) -->
 <!--   L336    857B  Skills for the next session (always write this section) -->
 <!--   L349    2.0K  Effort recommendation -->
-<!--   L379    3.4K  Split mode — two agents at once (optional) -->
-<!--   L431    1.1K  Navigate the history -->
-<!--   L448    2.9K  Notes -->
+<!--   L379    3.5K  Split mode — two agents at once (optional) -->
+<!--   L432    1.1K  Navigate the history -->
+<!--   L449    2.9K  Notes -->
 <!-- ======================= END NAV INDEX ======================= -->
 
 # /handoff — save session state so `/clear` is free
@@ -389,7 +389,8 @@ can hand off to two agents running side by side. The user starts each one with "
   parses them) plus a **Territory** section (files it writes, files it must not touch) and a
   **Done** line the agent fills in when it finishes — that's what tells the merging track it can go.
 - `--archive` folds the track files into the one archived handoff and removes them, so a later
-  single-track handoff can't strand a track nobody routes to.
+  single-track handoff can't strand a track nobody routes to. While `plan.md` has an open `- [ ]`
+  step it copies them but keeps them (an orchestrate worker may resume from one); delete by hand.
 
 **Split by the exclusive resource, not by "half the tasks each".** The split is only safe when
 exactly one track can touch the contended thing — a single-session API or device, a dev server on
