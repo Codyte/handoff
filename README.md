@@ -25,7 +25,8 @@ The skill only *writes* handoffs; the hooks are what *read* them back and watch 
 python load_handoff.py --ensure-hook
 ```
 
-Registers two hooks in `~/.claude/settings.json`, using this machine's own absolute path:
+Registers three hooks in `~/.claude/settings.json`, using this machine's own absolute path, and
+installs the orchestrate-mode `worker` agent to `~/.claude/agents/worker.md`:
 
 - `SessionStart` (matcher `startup|clear`) — injects the active handoff at startup and after
   `/clear`; on resume/compact the context already carries the thread, so it stays out.
@@ -37,6 +38,8 @@ Registers two hooks in `~/.claude/settings.json`, using this machine's own absol
   model prices and `boot` (this session's own first turn = what a `/clear` really restarts from) come
   from the transcript; only "how many turns remain" is the agent's estimate. Advisory — it never
   blocks a prompt.
+- `PostToolUse --check-worker` — the same checkpoint inside a worker subagent; silent on the main
+  thread. It tells the worker (no user watches one) to write a track file and stop with PARTIAL.
 
 Idempotent: rerunning migrates older installs (adds the matcher, repairs a moved path); no-op if
 already correct.
@@ -87,7 +90,11 @@ automatically on the next `--archive`.
 ## Documentation
 
 [`SKILL.md`](SKILL.md) — full spec: the handoff format, the archive/navigate commands, and the
-boot-hook details.
+boot-hook details. [`orchestrate.md`](orchestrate.md) — `/handoff orchestrate`: a master session
+runs `plan.md` through long-running worker subagents.
+[`scripts/session_stats.py`](scripts/session_stats.py) — token profile of sessions and their
+workers from the transcripts (boot, mean/peak context, total processed): measures whether a run
+paid off.
 
 ## License
 

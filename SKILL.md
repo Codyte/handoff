@@ -7,16 +7,16 @@ description: Save a compact handoff of the current session (goal, state, decisio
 <!-- NAV INDEX — auto-generated symbol map (refresh via the navindex skill) -->
 <!--   L22     346B  /handoff — save session state so `/clear` is free -->
 <!--   L28     801B  Companion skill: navindex -->
-<!--   L39     4.0K  Steps -->
-<!--   L96     5.2K  Format (keep under ~80 lines — a resume cue, not a log) -->
-<!--   L190    3.3K  Levels: `standing.md` (persistent) · `plan.md` (optional) · `active.md` (this session) -->
-<!--   L242    2.7K  Plan mode — `/handoff plan` (optional) -->
-<!--   L290    2.7K  Context checkpoint (automatic) -->
-<!--   L333    857B  Skills for the next session (always write this section) -->
-<!--   L346    2.0K  Effort recommendation -->
-<!--   L376    3.4K  Split mode — two agents at once (optional) -->
-<!--   L428    1.1K  Navigate the history -->
-<!--   L445    2.9K  Notes -->
+<!--   L39     4.1K  Steps -->
+<!--   L97     5.2K  Format (keep under ~80 lines — a resume cue, not a log) -->
+<!--   L191    3.3K  Levels: `standing.md` (persistent) · `plan.md` (optional) · `active.md` (this session) -->
+<!--   L243    2.9K  Plan mode — `/handoff plan` (optional) -->
+<!--   L293    2.7K  Context checkpoint (automatic) -->
+<!--   L336    857B  Skills for the next session (always write this section) -->
+<!--   L349    2.0K  Effort recommendation -->
+<!--   L379    3.4K  Split mode — two agents at once (optional) -->
+<!--   L431    1.1K  Navigate the history -->
+<!--   L448    2.9K  Notes -->
 <!-- ======================= END NAV INDEX ======================= -->
 
 # /handoff — save session state so `/clear` is free
@@ -43,11 +43,12 @@ normally checked out at `~/.agents/skills/handoff`. Load companion instructions 
    ```
    python "$HOME/.claude/skills/handoff/load_handoff.py" --ensure-hook
    ```
-   Idempotent: registers both hooks in `~/.claude/settings.json` only if missing, using this
+   Idempotent: registers the hooks in `~/.claude/settings.json` only if missing, using this
    machine's own absolute path. `SessionStart` (matcher `startup|clear`) injects the handoff at
    boot — on resume/compact the context already carries the thread, so injecting there would waste
-   tokens. `UserPromptSubmit --check-context` is the context checkpoint below. Older installs are
-   migrated in place. No-op if already correct.
+   tokens. `UserPromptSubmit --check-context` is the context checkpoint below;
+   `PostToolUse --check-worker` is its twin inside orchestrate-mode workers, and the `worker` agent
+   is installed to `~/.claude/agents/`. Older installs are migrated in place. No-op if already correct.
 1. Get the target path (keeps skill + hook in sync):
    ```
    python "$HOME/.claude/skills/handoff/load_handoff.py" --path
@@ -286,6 +287,8 @@ and clears the file. No plan.md at all → nothing about the skill changes.
 is `## Next steps`, and it is fine), or for a standing rule (`standing.md`). And don't restate the
 plan's steps in the handoff: the plan owns the sequence, `## Next steps` owns this session's slice
 of it — usually one line pointing at the current step.
+
+**`/handoff orchestrate`** runs the open plan with long-running `worker` subagents under one master session: read [`orchestrate.md`](orchestrate.md) and follow it.
 
 ## Context checkpoint (automatic)
 
