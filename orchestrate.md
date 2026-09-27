@@ -61,10 +61,13 @@ Thinking belongs in rulings.
    - `DONE` + gate exit 0 + clean tree → tick the step (`- [x]` plus the evidence: commit, gate
      result). Delete a leftover `.handoff/track1.md` in the same commit. Next step.
    - `DONE` but the gate fails or the tree is dirty → treat as `PARTIAL` with that as the open item.
-   - `PARTIAL` → the worker wrote `.handoff/track1.md`. `SendMessage` the same worker only for a
-     short same-subject follow-up (about 10 calls or fewer) inside the cache hour. Anything else,
-     a checkpoint stop or a new subject, gets a fresh worker whose brief is the track file plus the
-     original Gate/Area/Do-not-touch lines. Measured: a 9-call follow-up at ~135k/request cost
+   - `PARTIAL` → the worker wrote `.handoff/track1.md`. `SendMessage` the same worker inside the
+     cache hour for a short same-subject follow-up, or after a checkpoint stop when its report shows
+     efficient progress and the master judges the remaining track steps finish the step: the
+     message says `Run to finish`, which overrides later checkpoint lines (user ruling 2026-09-27:
+     finishing warm beats re-deriving). Anything else, a new subject or a worker far from done,
+     gets a fresh worker whose brief is the track file plus the original Gate/Area/Do-not-touch
+     lines. Measured: a 9-call follow-up at ~135k/request cost
      about what a fresh worker would; on a new subject fresh was 2.5-3x cheaper.
    - `NEEDS_DECISION` → rule it yourself and record it under the step in plan.md:
      `Ruling: <decision> — <why> — <cost if wrong>`; then resume the worker with the ruling.
@@ -82,8 +85,9 @@ Thinking belongs in rulings.
 
 ## Stop rules
 - **Worker**: the `PostToolUse --check-worker` hook adds `Worker checkpoint: ~Xk vs ~Yk fresh
-  worker. More than ~N turns left: ...` to its context once handing off beats continuing. The
-  worker decides against its own remaining work; there is no fixed ceiling.
+  worker. More than ~N turns left: ...` to its context once handing off beats continuing, and
+  never below ~200k (`WORKER_WARN_AT`): an efficient worker runs to 200k unstopped. The worker
+  decides against its own remaining work; the master may overrule a stop with `Run to finish`.
 - **Master**: `/handoff` at a worker boundary every 2-3 worker cycles, or sooner when
   `load_handoff.py --context` puts the breakeven at or below the turns left. Never while a worker
   runs: its completion notification lands in the old session. plan.md already holds the ledger

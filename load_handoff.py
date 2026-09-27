@@ -335,6 +335,7 @@ def ensure_hook(settings=None):
 
 
 CTX_WARN_AT = 120_000        # floor: below this a nudge is noise even if breakeven says otherwise
+WORKER_WARN_AT = 200_000     # worker floor: an efficient worker runs to 200k unstopped (user, 2026-09-27)
 CTX_WARN_STEP = 20_000       # re-warn only after this much further growth (one nudge per band)
 TURNS_WARN = 8               # nudge once handoff pays for itself within this many remaining turns
 BOOT_FALLBACK = 20_000       # assumed post-/clear context when this project has no measured one
@@ -537,7 +538,7 @@ def check_worker(payload):
     key = f"{payload.get('session_id') or '?'}:{agent}"
     _warn_state(key, t.exists(), ".handoff_worker_seen")
     b = breakeven(t, sidechain=True)
-    if not b or b["ctx"] < CTX_WARN_AT or b["turns"] > TURNS_WARN:
+    if not b or b["ctx"] < WORKER_WARN_AT or b["turns"] > TURNS_WARN:
         return
     band = b["ctx"] // CTX_WARN_STEP
     if band <= _warn_state(key):
@@ -865,6 +866,8 @@ def _selftest():
                 return json.dumps({"isSidechain": True, "message": {
                     "model": "claude-opus-5-5", "usage": {"cache_read_input_tokens": n}}})
             (pathlib.Path(td) / "S" / "subagents" / "agent-X.jsonl").write_text(
+                row(44_000) + "\n" + row(210_000) + "\n", encoding="utf-8")
+            (pathlib.Path(td) / "S" / "subagents" / "agent-Y.jsonl").write_text(
                 row(44_000) + "\n" + row(190_000) + "\n", encoding="utf-8")
 
             def run(payload):
@@ -876,10 +879,11 @@ def _selftest():
             assert run(base) == ""                                  # main thread → silent
             out = json.loads(run({**base, "agent_id": "X"}))["hookSpecificOutput"]
             assert out["hookEventName"] == "PostToolUse", out
-            assert "~190k vs ~44k fresh worker" in out["additionalContext"], out
+            assert "~210k vs ~44k fresh worker" in out["additionalContext"], out
             assert run({**base, "agent_id": "X"}) == ""             # same band → once
             seen = json.loads((STATE_DIR / ".handoff_worker_seen").read_text(encoding="utf-8"))
             assert seen == {"S:X": True}, seen
+            assert run({**base, "agent_id": "Y"}) == ""             # under the 200k floor → runs on
         finally:
             STATE_DIR = keep
     print("selftest ok")

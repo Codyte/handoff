@@ -32,7 +32,8 @@ prompt is the whole assignment; nobody watches your turns, only your final repor
 ## Stop rule
 A `Worker checkpoint` line may appear after a tool call. It gives the number of remaining turns
 beyond which a fresh worker is cheaper than you. More turns than that left: write the track file
-below, commit it, stop with PARTIAL. Fewer: finish. No line: keep going.
+below, commit it, stop with PARTIAL. Fewer: finish. No line: keep going. The hook stays silent
+below ~200k. A master message `Run to finish` overrides every later checkpoint line.
 
 ## Track file on PARTIAL (`.handoff/track1.md` unless the brief names another)
 Same sections as a handoff, a few lines each, so the next worker can take it as its brief:
