@@ -24,55 +24,60 @@ session; overwritten every handoff, archived first).
 """
 # ====================== BEGIN NAV INDEX ======================
 # NAV INDEX — auto-generated symbol map (refresh via the navindex skill)
-#   L87     101B  _key
-#   L91     337B  _git_root
-#   L101    549B  handoff_file
-#   L113    381B  track_files
-#   L121     99B  STANDING_CAP
-#   L124    629B  standing_file
-#   L135    512B  review_file
-#   L145    218B  review_note
-#   L151    739B  plan_file
-#   L164     59B  _PLAN_OPEN
-#   L165     64B  _PLAN_DONE
-#   L168    514B  plan_state
-#   L182    640B  migrate_standing
-#   L197    954B  standing_status
-#   L215    1.3K  legacy_note
-#   L235    315B  _archive_dir
-#   L242    280B  _archive_files
-#   L249    107B  _hook_flag
-#   L253    472B  _same_cmd
-#   L262    1.8K  _wire
-#   L298    2.5K  ensure_hook
-#   L337     99B  CTX_WARN_AT
-#   L338     96B  CTX_WARN_STEP
-#   L339     99B  TURNS_WARN
-#   L340     97B  BOOT_FALLBACK
-#   L341     76B  HANDOFF_OUT
-#   L342    299B  REDERIVE
-#   L346    764B  _PRICES
-#   L359    465B  prices
-#   L370    828B  _usage_lines
-#   L392    353B  _tail
-#   L403    181B  _head
-#   L411    315B  context_tokens
-#   L418    597B  boot_context
-#   L431    1.2K  breakeven
-#   L456    1.6K  spawn_session
-#   L482     64B  STATE_DIR
-#   L485    713B  _warn_state
-#   L504    1.1K  check_context
-#   L525    1.4K  check_worker
-#   L552    1.8K  archive_current
-#   L589    270B  _section
-#   L596    843B  resume_skills_note
-#   L611    811B  history
-#   L631    1.2K  open_items
-#   L653   1006B  grep
-#   L674     13K  _selftest
-#   L888    1.9K  boot_breakdown
-#   L928    4.9K  main
+#   L92     101B  _key
+#   L96     337B  _git_root
+#   L106    549B  handoff_file
+#   L118    381B  track_files
+#   L126     99B  STANDING_CAP
+#   L129    629B  standing_file
+#   L140    512B  review_file
+#   L150    218B  review_note
+#   L156    739B  plan_file
+#   L169    814B  tick_text
+#   L188    635B  tick
+#   L203     59B  _PLAN_OPEN
+#   L204     64B  _PLAN_DONE
+#   L207    514B  plan_state
+#   L221    640B  migrate_standing
+#   L236    954B  standing_status
+#   L254    1.3K  legacy_note
+#   L274    315B  _archive_dir
+#   L281    280B  _archive_files
+#   L288    107B  _hook_flag
+#   L292    472B  _same_cmd
+#   L301    1.8K  _wire
+#   L337    2.5K  ensure_hook
+#   L376     99B  CTX_WARN_AT
+#   L377    107B  WORKER_WARN_AT
+#   L378     96B  CTX_WARN_STEP
+#   L379     99B  TURNS_WARN
+#   L380     97B  BOOT_FALLBACK
+#   L381     76B  HANDOFF_OUT
+#   L382    391B  REDERIVE
+#   L386     89B  WORKER_REREAD
+#   L387    281B  WORKER_RAMP
+#   L391    764B  _PRICES
+#   L404    465B  prices
+#   L415    828B  _usage_lines
+#   L437    353B  _tail
+#   L448    181B  _head
+#   L456    315B  context_tokens
+#   L463    597B  boot_context
+#   L476    1.4K  breakeven
+#   L503    1.6K  spawn_session
+#   L529     64B  STATE_DIR
+#   L532    713B  _warn_state
+#   L551    1.1K  check_context
+#   L572    1.4K  check_worker
+#   L599    1.8K  archive_current
+#   L636    270B  _section
+#   L643    843B  resume_skills_note
+#   L658    811B  history
+#   L678    1.2K  open_items
+#   L700   1006B  grep
+#   L721     14K  _selftest
+#   L943    1.9K  boot_breakdown
+#   L983    5.1K  main
 # ======================= END NAV INDEX =======================
 
 import sys, os, json, re, pathlib, datetime
@@ -159,6 +164,40 @@ def plan_file(cwd):
 
     No plan.md → nothing changes anywhere. That is the point: opting in is creating the file."""
     return handoff_file(cwd).parent / "plan.md"
+
+
+def tick_text(text, step, evidence):
+    """Flip open step `<step>.` to `[x]` and append `evidence: ...` at the end of its block.
+
+    Returns the new text, or None when no open step carries that id. Pure, so --selftest covers it."""
+    nl = "\r\n" if "\r\n" in text else "\n"
+    lines = text.split(nl)
+    head = re.compile(r"^(\s*[-*]\s*)\[ \](\s*" + re.escape(step) + r"\.\s)")
+    i = next((n for n, line in enumerate(lines) if head.match(line)), None)
+    if i is None:
+        return None
+    indent = " " * (len(head.match(lines[i]).group(1)) + 4)
+    lines[i] = head.sub(r"\1[x]\2", lines[i], count=1)
+    j = i + 1
+    while j < len(lines) and lines[j].strip() and not re.match(r"^\s*[-*]\s*\[", lines[j]):
+        j += 1
+    lines.insert(j, f"{indent}evidence: {evidence}")
+    return nl.join(lines)
+
+
+def tick(cwd, step, evidence):
+    """`--tick <step> <evidence>`: close one plan step in one shell call. Two Edits (flip the box,
+    add the evidence) echo the plan into the master's context twice per step; this echoes nothing."""
+    p = plan_file(cwd)
+    if not p.exists():
+        return f"(no plan at {p})"
+    new = tick_text(p.read_text(encoding="utf-8"), step, evidence)
+    if new is None:
+        return f"(no open step '{step}.' in {p})"
+    with open(p, "w", encoding="utf-8", newline="") as f:
+        f.write(new)
+    left = len(_PLAN_OPEN.findall(new))
+    return f"ticked {step} in {p} — {left} open step(s) left"
 
 
 _PLAN_OPEN = re.compile(r"^\s*[-*]\s*\[ \]\s*(.+)$", re.M)
@@ -688,6 +727,11 @@ def _selftest():
     assert _section(sample, "Open / blockers") == "- x"   # '/' is escaped, not regex
     assert _section(sample, "Missing") == ""              # absent section → empty
     assert _section("", "Goal") == ""                     # empty input → empty
+    plan = "# P\n\n- [x] 1. a — done when: x\n      evidence: e1\n- [ ] 3b. b\n      — done when: y\n- [ ] 4. c\n"
+    ticked = tick_text(plan, "3b", "c9 ok")
+    assert "- [x] 3b. b\n      — done when: y\n      evidence: c9 ok\n- [ ] 4. c" in ticked, ticked
+    assert tick_text(plan, "1", "again") is None           # already closed → refused
+    assert tick_text(plan.replace("\n", "\r\n"), "4", "z").endswith("      evidence: z\r\n")
     note = resume_skills_note("## Skills\n- navindex\n- C:/skills/custom.md\n- -caveman\n")
     assert "navindex" in note and "C:/skills/custom.md" in note, note
     assert "latest user request is unrelated" in note, note
@@ -945,6 +989,10 @@ def main():
         return
     if "--plan-path" in sys.argv:
         print(plan_file(os.getcwd()))
+        return
+    if "--tick" in sys.argv:
+        args = sys.argv[sys.argv.index("--tick") + 1:][:2]
+        print(tick(os.getcwd(), *args) if len(args) == 2 else "(usage: --tick <step> <evidence>)")
         return
     if "--path" in sys.argv:
         print(handoff_file(os.getcwd()))

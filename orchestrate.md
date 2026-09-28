@@ -1,12 +1,12 @@
 <!-- ====================== BEGIN NAV INDEX ====================== -->
 <!-- NAV INDEX — auto-generated symbol map (refresh via the navindex skill) -->
 <!--   L12     789B  Orchestrate mode — `/handoff orchestrate` -->
-<!--   L24     633B  Prerequisites (check once, at the first boot) -->
-<!--   L32     3.3K  The master loop -->
-<!--   L80     1.5K  Concurrency — lanes -->
-<!--   L99     854B  Stop rules -->
-<!--   L111    568B  Anti-patterns -->
-<!--   L119    501B  Measuring a run -->
+<!--   L24     829B  Prerequisites (check once, at the first boot) -->
+<!--   L34     4.4K  The master loop -->
+<!--   L94     1.6K  Concurrency — lanes -->
+<!--   L113    1.1K  Stop rules -->
+<!--   L128    740B  Anti-patterns -->
+<!--   L138    986B  Measuring a run -->
 <!-- ======================= END NAV INDEX ======================= -->
 
 # Orchestrate mode — `/handoff orchestrate`
@@ -26,7 +26,9 @@ master stays small because it only ever reads reports, and verification is the s
   No plan → run `/handoff plan` first; orchestrating without a ledger re-dispatches finished work.
 - `load_handoff.py --ensure-hook` prints `PostToolUse: already present` and `worker agent: present`
   (the worker's checkpoint hook and `~/.claude/agents/worker.md`). A project may override the
-  agent with its own `.claude/agents/worker.md` (extra preloaded skills, project rules).
+  agent with its own `.claude/agents/worker.md` (extra preloaded skills, project rules). Keep its
+  `tools:` allowlist: every tool definition is re-read on each worker request. After the first
+  spawn, `session_stats.py` should show the worker boot below the ~50k measured without it.
 - Hooks and agent files load at session start: after installing them, `/clear` before orchestrating.
 
 ## The master loop
@@ -38,8 +40,15 @@ Thinking belongs in rulings.
 1. **Boot.** Read the first open step of plan.md. Check its `done when` before anything else:
    another session or worker may have finished it. Satisfied → tick it with the evidence, next.
 2. **Size it.** Work under ~20 tool calls → do it inline; a worker's boot costs more than that.
-   Bigger → brief a worker.
-3. **Brief** (40 lines max; the worker knows nothing else, CLAUDE.md aside):
+   Bigger → brief a worker. Too big for one worker → split it into disjoint lanes first.
+   Measured (tia F123): a worker's context grows ~3k tokens per request, so one worker costs
+   about n·boot + 1.5k·n² for n requests. A step heading past ~30 requests (4+ code items, 40+
+   doc rows) is cheaper as two lanes; under ~25 the second boot and its re-reading eat the
+   saving. F123's 48-request worker would have saved ~1.2M tokens split in two.
+3. **Brief** (40 lines max; the worker knows nothing else, CLAUDE.md and its agent file aside.
+   Never restate those: lanes, shell rule and report format are already loaded. Agent files
+   load at session start, so a rule added to the agent file mid-run reaches this run's workers
+   only through the brief):
    ```
    Step: <plan step number and title>
    Goal: <one or two lines: the outcome, not the method>
@@ -55,8 +64,13 @@ Thinking belongs in rulings.
 4. **Spawn** `Agent(subagent_type: "worker", description: "w<step> <3 words>", prompt: <brief>)`.
    It runs in the background; end the turn. **Never poll** and never read its transcript: the
    completion notification brings the report.
-5. **Verify** on the notification, in one shell call: the gate command, `git log --oneline -3`,
-   `git status --short | head`. When a shell proxy (e.g. RTK) rewrites `git`, check removed lines
+5. **Verify** on the notification, in one shell call. Offline lane:
+   `python <skill>/scripts/merge_lane.py <branch> --check "<gate>" --tick <N> "<evidence>" --push`
+   rebases when main moved (rerunning `--gate` inside the lane), prints commits, numstat and the
+   deleted non-header lines, merges `--ff-only`, runs the check, unlinks junctions before removing
+   the worktree, ticks the step and pushes; `--inspect` stops before the merge. In-place lane:
+   the gate command, `git log --oneline -3`, `git status --short | head`, then
+   `load_handoff.py --tick <N> "<evidence>"` (never two Edits: they echo the plan twice). When a shell proxy (e.g. RTK) rewrites `git`, check removed lines
    with the unproxied binary (`/usr/bin/env git diff ...`): a condensed diff once made a NAV INDEX
    regeneration look like deleted history. Then act on the report:
    - `DONE` + gate exit 0 + clean tree → tick the step (`- [x]` plus the evidence: commit, gate
@@ -89,7 +103,7 @@ Thinking belongs in rulings.
   shows up there; fix it first (tia 2026-09-27: a test held the live single-call mutex).
 - **Merge-friendly edits**: disjoint Areas; additions go next to related code, never all at the end
   of a shared list; generated files are regenerated after a rebase, never hand-merged.
-- **The master merges**: rebase the lane branch onto main, rerun the offline gate if main moved,
+- **The master merges** with `scripts/merge_lane.py` (loop step 5): rebase the lane branch onto main, rerun the offline gate if main moved,
   then `merge --ff-only`. Git refuses rather than overwrite the resource lane's uncommitted files;
   a refused merge waits for its next commit. The master reads and resolves code conflicts itself.
 - Read-only workers need no worktree. Sequential steps stay sequential.
@@ -102,7 +116,10 @@ Thinking belongs in rulings.
   never below ~200k (`WORKER_WARN_AT`): an efficient worker runs to 200k unstopped. The worker
   decides against its own remaining work; the master may overrule a stop with `Run to finish`.
 - **Master**: `/handoff` at a worker boundary every 2-3 worker cycles, or sooner when
-  `load_handoff.py --context` puts the breakeven at or below the turns left. Drain first: stop
+  `load_handoff.py --context` puts the breakeven at or below the turns left. With parallel lanes
+  a boundary is rare (some lane is always running): hand off at the first moment no worker runs
+  and the context is past ~120k, and keep the master lean meanwhile (`merge_lane.py`, `--tick`,
+  short user updates). F123 ran 8 cycles in one master at a 132k mean. Drain first: stop
   dispatching and let running workers report, since a completion notification lands in the old
   session. plan.md already holds the ledger
   and rulings, so the handoff is short; ask the user to `/clear`, and the next master boots on the
@@ -115,6 +132,8 @@ Thinking belongs in rulings.
 - Re-dispatching a ticked step, or dispatching without checking `done when` first.
 - Worker briefs that restate CLAUDE.md or the skill: it is already loaded; point to sections.
 - Letting a worker ask the user. Nobody is there; it returns NEEDS_DECISION instead.
+- Invoking `/handoff` only to start or resume a master: read this file directly; SKILL.md adds
+  nothing the loop uses and stays in the master's context for the whole run.
 
 ## Measuring a run
 `python scripts/session_stats.py ~/.claude/projects/<project-dir> --last N` profiles each session
@@ -122,3 +141,9 @@ and its workers: boot, mean and peak context per request, total tokens processed
 paid off when master + workers processed less than a single session doing the same kind of work,
 with each worker's mean context well under its peak. Pilot (tia F120, 2026-09-27): master mean
 70.6k, G120 worker mean 97k, total 4.8M processed vs 6.0-16.9M for the single-session baseline.
+
+Second run (tia F123, 2026-09-28, 8 workers: 6 offline lanes, 2 Portal): master 62 requests, mean
+132k (8.2M); workers 28.0M; total 36.2M. Worker boot ~50k, of which ~15-20k is instructions and
+the rest tool definitions a worker never calls, hence the `tools:` allowlist in `agents/worker.md`.
+The master's excess came from loading SKILL.md to reach this file, closing each lane by hand
+(~4 calls at ~130k; now `scripts/merge_lane.py`) and ticking the plan with Edits (now `--tick`).

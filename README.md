@@ -90,11 +90,14 @@ automatically on the next `--archive`.
 ## Documentation
 
 [`SKILL.md`](SKILL.md) — full spec: the handoff format, the archive/navigate commands, and the
-boot-hook details. [`orchestrate.md`](orchestrate.md) — `/handoff orchestrate`: a master session
+boot-hook details; [`reference.md`](reference.md) holds the on-demand sections (context checkpoint,
+split mode, history, notes). [`orchestrate.md`](orchestrate.md) — `/handoff orchestrate`: a master session
 runs `plan.md` through long-running worker subagents.
 [`scripts/session_stats.py`](scripts/session_stats.py) — token profile of sessions and their
 workers from the transcripts (boot, mean/peak context, total processed): measures whether a run
-paid off.
+paid off. [`scripts/merge_lane.py`](scripts/merge_lane.py) — the master closes an offline lane in
+one call: rebase if main moved, diff sanity, `--ff-only`, check, junction-safe worktree removal,
+plan tick (`load_handoff.py --tick`), push.
 
 ## License
 
