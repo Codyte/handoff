@@ -3,10 +3,10 @@
 <!--   L12     789B  Orchestrate mode — `/handoff orchestrate` -->
 <!--   L24     829B  Prerequisites (check once, at the first boot) -->
 <!--   L34     4.4K  The master loop -->
-<!--   L94     1.6K  Concurrency — lanes -->
-<!--   L113    1.1K  Stop rules -->
-<!--   L128    740B  Anti-patterns -->
-<!--   L138    986B  Measuring a run -->
+<!--   L94     1.7K  Concurrency — lanes -->
+<!--   L115    1.1K  Stop rules -->
+<!--   L130    740B  Anti-patterns -->
+<!--   L140    986B  Measuring a run -->
 <!-- ======================= END NAV INDEX ======================= -->
 
 # Orchestrate mode — `/handoff orchestrate`
@@ -105,7 +105,9 @@ Thinking belongs in rulings.
   of a shared list; generated files are regenerated after a rebase, never hand-merged.
 - **The master merges** with `scripts/merge_lane.py` (loop step 5): rebase the lane branch onto main, rerun the offline gate if main moved,
   then `merge --ff-only`. Git refuses rather than overwrite the resource lane's uncommitted files;
-  a refused merge waits for its next commit. The master reads and resolves code conflicts itself.
+  a refused merge waits for its next commit. A rebase conflict only in `__navi__.md` maps or inside
+  NAV INDEX headers is regenerated (navindex) and the rebase continues; any other conflict stops
+  with its paths named, and the master reads and resolves it itself.
 - Read-only workers need no worktree. Sequential steps stay sequential.
 - Default cap: two offline lanes beside the resource lane; raise it when builds do not slow the
   resource lane. Each spawn costs a boot (~44k), so split only work that runs long.
