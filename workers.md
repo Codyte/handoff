@@ -136,6 +136,9 @@ its current context per request.
   a refused merge waits for its next commit. A rebase conflict only in `__navi__.md` maps or inside
   NAV INDEX headers is regenerated (navindex) and the rebase continues; any other conflict stops
   with its paths named, and the master reads and resolves it itself.
+- **Master: run anything inside a lane worktree in a subshell** (`(cd <wt> && ...)`). A plain `cd`
+  persists the shell's cwd there, and `merge_lane.py` then fails `worktree remove` with
+  `Permission denied` (tia 2026-10-16, twice).
 - Read-only workers need no worktree. Sequential steps stay sequential.
 - Default cap: two offline lanes beside the resource lane; raise it when builds do not slow the
   resource lane. Each spawn costs a boot (~44k), so split only work that runs long.
