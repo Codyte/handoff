@@ -5,7 +5,7 @@ description: Save a compact handoff of the current session (goal, state, decisio
 
 <!-- ====================== BEGIN NAV INDEX ====================== -->
 <!-- NAV INDEX — auto-generated symbol map (refresh via the navindex skill) -->
-<!--   L19     511B  /handoff — save session state so `/clear` is free -->
+<!--   L19     534B  /handoff — save session state so `/clear` is free -->
 <!--   L28     801B  Companion skill: navindex -->
 <!--   L39     4.1K  Steps -->
 <!--   L97     5.2K  Format (keep under ~80 lines — a resume cue, not a log) -->
@@ -13,7 +13,7 @@ description: Save a compact handoff of the current session (goal, state, decisio
 <!--   L243    2.9K  Plan mode — `/handoff plan` (optional) -->
 <!--   L294    857B  Skills for the next session (always write this section) -->
 <!--   L307    2.0K  Effort recommendation -->
-<!--   L337    642B  On demand — `reference.md` (read only the section you need) -->
+<!--   L337    634B  On demand — `reference.md` (read only the section you need) -->
 <!-- ======================= END NAV INDEX ======================= -->
 
 # /handoff — save session state so `/clear` is free
@@ -22,7 +22,7 @@ Long sessions at large context are the #1 cost driver. `/clear` fixes that but l
 this skill removes that downside: it writes a terse resume cue that the **SessionStart hook auto-loads**
 on the next session, so after `/clear` you continue from exactly where you left off.
 
-**Argument `orchestrate`** (start or resume a master): read [`orchestrate.md`](orchestrate.md)
+**Argument `workers`** (old name `orchestrate`, same mode; start or resume a master): read [`workers.md`](workers.md)
 and follow it; nothing else in this file is part of the master loop.
 
 ## Companion skill: navindex
@@ -47,7 +47,7 @@ normally checked out at `~/.agents/skills/handoff`. Load companion instructions 
    machine's own absolute path. `SessionStart` (matcher `startup|clear`) injects the handoff at
    boot — on resume/compact the context already carries the thread, so injecting there would waste
    tokens. `UserPromptSubmit --check-context` is the context checkpoint below;
-   `PostToolUse --check-worker` is its twin inside orchestrate-mode workers, and the `worker` agent
+   `PostToolUse --check-worker` is its twin inside workers-mode workers, and the `worker` agent
    is installed to `~/.claude/agents/`. Older installs are migrated in place. No-op if already correct.
 1. Get the target path (keeps skill + hook in sync):
    ```
@@ -289,7 +289,7 @@ is `## Next steps`, and it is fine), or for a standing rule (`standing.md`). And
 plan's steps in the handoff: the plan owns the sequence, `## Next steps` owns this session's slice
 of it — usually one line pointing at the current step.
 
-**`/handoff orchestrate`** runs the open plan with long-running `worker` subagents under one master session: read [`orchestrate.md`](orchestrate.md) and follow it.
+**`/handoff workers`** runs the open plan with long-running `worker` subagents under one master session: read [`workers.md`](workers.md) and follow it.
 
 ## Skills for the next session (always write this section)
 
@@ -342,4 +342,4 @@ Rules:
 - **Navigate the history**: `--open` (live TODO), `--history` (digest of archived handoffs),
   `--grep <term>` (standing.md + archive).
 - **Notes**: where the files live, the archive, `review.md`, a new machine, no secrets.
-- **Orchestrate**: `orchestrate.md` (master loop, lanes, `scripts/merge_lane.py`).
+- **Workers**: `workers.md` (master loop, lanes, `scripts/merge_lane.py`).

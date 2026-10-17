@@ -1,6 +1,6 @@
-"""Close one offline lane of an orchestrate run in one call (master side, from the main checkout).
+"""Close one offline lane of a workers run in one call (master side, from the main checkout).
 
-    python merge_lane.py <branch> [--gate CMD] [--check CMD] [--tick STEP EVIDENCE] [--push] [--inspect]
+    python merge_lane.py <branch> [--gate CMD] [--check CMD] [--tick STEP EVIDENCE] [--push] [--inspect] [--keep]
 
 1. When main moved since the lane branched, rebase the branch inside its worktree and rerun --gate
    there (the lane's own offline gate). An unmoved base keeps the worker's gate result.
@@ -13,26 +13,28 @@
    a recursive delete that follows a junction wipes the main checkout's copy (e.g. `lib/`).
 5. --tick closes the plan step (load_handoff.py --tick) and commits plan.md; --push pushes.
 
+--keep skips step 4: the worker is being reused for a related step (workers.md § Reuse), so its
+worktree, junctions and branch stay; after the ff merge the branch equals main.
 --inspect stops after step 2. Any failure stops with exit 1 and names the step; nothing is forced.
 Measured on tia F123 (2026-09-28): closing a lane by hand took the master ~4 calls at ~130k each.
 """
 # ====================== BEGIN NAV INDEX ======================
 # NAV INDEX — auto-generated symbol map (refresh via the navindex skill)
-#   L43      60B  HEADER
-#   L44      54B  NAV_MARK
-#   L45      56B  CONFLICT
-#   L46      81B  NAVINDEX
-#   L49     288B  run
-#   L56     359B  shell
-#   L65     282B  worktree_of
-#   L75     579B  links
-#   L96     222B  unlink
-#   L102    874B  nav_only
-#   L124    881B  regenerate
-#   L143    1.4K  rebase
-#   L167    2.4K  main
-#   L233    1.9K  _selftest
-#   L275    2.8K  _selftest_nav
+#   L45      60B  HEADER
+#   L46      54B  NAV_MARK
+#   L47      56B  CONFLICT
+#   L48      81B  NAVINDEX
+#   L51     288B  run
+#   L58     359B  shell
+#   L67     282B  worktree_of
+#   L77     579B  links
+#   L98     222B  unlink
+#   L104    874B  nav_only
+#   L126    881B  regenerate
+#   L145    1.4K  rebase
+#   L169    2.6K  main
+#   L238    1.9K  _selftest
+#   L280    2.8K  _selftest_nav
 # ======================= END NAV INDEX =======================
 
 import os
@@ -208,12 +210,15 @@ def main(argv):
         shell(opt("--check"), None, "check in main checkout")
 
     print("=== 4 cleanup ===")
-    for p in links(wt):
+    if "--keep" in opts:                    # worker reused for a related step: its branch now equals main
+        print(f"kept worktree {wt} and branch {branch} (--keep)")
+    for p in ([] if "--keep" in opts else links(wt)):
         unlink(p)
         print(f"unlinked {p}")
-    run(["git", "worktree", "remove", wt])
-    run(["git", "branch", "-d", branch])
-    print(f"removed worktree {wt} and branch {branch}")
+    if "--keep" not in opts:
+        run(["git", "worktree", "remove", wt])
+        run(["git", "branch", "-d", branch])
+        print(f"removed worktree {wt} and branch {branch}")
 
     tick = opt("--tick", 2)
     if tick:

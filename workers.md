@@ -1,15 +1,16 @@
 <!-- ====================== BEGIN NAV INDEX ====================== -->
 <!-- NAV INDEX — auto-generated symbol map (refresh via the navindex skill) -->
-<!--   L12     789B  Orchestrate mode — `/handoff orchestrate` -->
-<!--   L24     829B  Prerequisites (check once, at the first boot) -->
-<!--   L34     4.4K  The master loop -->
-<!--   L94     1.7K  Concurrency — lanes -->
-<!--   L115    1.1K  Stop rules -->
-<!--   L130    740B  Anti-patterns -->
-<!--   L140    986B  Measuring a run -->
+<!--   L13     781B  Workers mode — `/handoff workers` -->
+<!--   L25     829B  Prerequisites (check once, at the first boot) -->
+<!--   L35     4.6K  The master loop -->
+<!--   L96     1.8K  Reuse — a related step goes to the warm worker (user ruling 2026-10-16) -->
+<!--   L122    1.7K  Concurrency — lanes -->
+<!--   L143    1.1K  Stop rules -->
+<!--   L158    740B  Anti-patterns -->
+<!--   L168    986B  Measuring a run -->
 <!-- ======================= END NAV INDEX ======================= -->
 
-# Orchestrate mode — `/handoff orchestrate`
+# Workers mode — `/handoff workers`
 
 One **master** session works through `.handoff/plan.md` for hours by spawning long-running
 **worker** subagents, one plan step each, and supervising them through short reports. It is plan
@@ -74,7 +75,8 @@ Thinking belongs in rulings.
    with the unproxied binary (`/usr/bin/env git diff ...`): a condensed diff once made a NAV INDEX
    regeneration look like deleted history. Then act on the report:
    - `DONE` + gate exit 0 + clean tree → tick the step (`- [x]` plus the evidence: commit, gate
-     result). Delete a leftover `.handoff/track1.md` in the same commit. Next step.
+     result). Delete a leftover `.handoff/track1.md` in the same commit. Next step, **reuse check
+     first** (§ Reuse): a related next step goes to this worker, merged with `merge_lane.py --keep`.
    - `DONE` but the gate fails or the tree is dirty → treat as `PARTIAL` with that as the open item.
    - `PARTIAL` → the worker wrote `.handoff/track1.md`. `SendMessage` the same worker inside the
      cache hour for a short same-subject follow-up, or after a checkpoint stop when its report shows
@@ -90,6 +92,32 @@ Thinking belongs in rulings.
      deploy, spend), or a plan that turned out wrong. Ask, and meanwhile run any independent step.
 6. **Repeat** from 1. Commit plan.md ticks with explicit paths; never `git add -A` (a worker may
    be mid-edit in the same tree).
+
+## Reuse — a related step goes to the warm worker (user ruling 2026-10-16)
+
+Before spawning for the next step, check every finished worker of this run. **Always reuse** one
+whose context covers the step: same Area or files, a step that builds on its commits (a second half
+of the same item, a fix of its own `open:` lines), or the same subject. A fresh worker re-reads
+what the warm one already holds (boot ~44-50k plus re-deriving the Area); the warm one pays only
+its current context per request.
+
+- **Reuse** = `SendMessage(to: <worker>, message: <new brief>)`. The brief keeps the same format,
+  but only the lines that changed (Step, Goal, Done when, Gate, new Area/Do-not-touch); "Read first"
+  lists only what it has not read yet.
+- **Offline lane:** merge the finished step with `merge_lane.py <branch> --keep ...` so the
+  worktree, junctions and branch survive; after the ff merge the branch equals main, and the worker
+  rebases onto main before its next report as usual. The last step of that worker merges without
+  `--keep` (cleanup).
+- **Reuse only when warm and lean:** within the cache hour of its last report and below its
+  checkpoint (~200k, `WORKER_WARN_AT`). Past either, a fresh worker briefed with that worker's
+  report and track file is cheaper.
+- **Same model fits:** a step that needs a stronger model than the warm worker runs on (Sonnet
+  worker, an Opus-grade step) gets a fresh worker; a lighter step may reuse a stronger worker.
+- **Unrelated subject → fresh worker.** Measured: on a new subject fresh was 2.5-3x cheaper
+  (§ loop step 5); relatedness is what makes reuse pay.
+- Never reuse across lanes: a resource-lane worker stays in the main checkout and an offline one in
+  its worktree.
+- Record the choice in the dispatch line to the user (`reuse w<step>` or `fresh: <reason>`).
 
 ## Concurrency — lanes
 - **One resource lane per exclusive resource**: a single-session API or device, a registered build

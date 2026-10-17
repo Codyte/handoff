@@ -26,7 +26,7 @@ python load_handoff.py --ensure-hook
 ```
 
 Registers three hooks in `~/.claude/settings.json`, using this machine's own absolute path, and
-installs the orchestrate-mode `worker` agent to `~/.claude/agents/worker.md`:
+installs the workers-mode `worker` agent to `~/.claude/agents/worker.md`:
 
 - `SessionStart` (matcher `startup|clear`) — injects the active handoff at startup and after
   `/clear`; on resume/compact the context already carries the thread, so it stays out.
@@ -91,7 +91,7 @@ automatically on the next `--archive`.
 
 [`SKILL.md`](SKILL.md) — full spec: the handoff format, the archive/navigate commands, and the
 boot-hook details; [`reference.md`](reference.md) holds the on-demand sections (context checkpoint,
-split mode, history, notes). [`orchestrate.md`](orchestrate.md) — `/handoff orchestrate`: a master session
+split mode, history, notes). [`workers.md`](workers.md) — `/handoff workers`: a master session
 runs `plan.md` through long-running worker subagents.
 [`scripts/session_stats.py`](scripts/session_stats.py) — token profile of sessions and their
 workers from the transcripts (boot, mean/peak context, total processed): measures whether a run

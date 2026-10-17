@@ -69,7 +69,7 @@ can hand off to two agents running side by side. The user starts each one with "
   **Done** line the agent fills in when it finishes — that's what tells the merging track it can go.
 - `--archive` folds the track files into the one archived handoff and removes them, so a later
   single-track handoff can't strand a track nobody routes to. While `plan.md` has an open `- [ ]`
-  step it copies them but keeps them (an orchestrate worker may resume from one); delete by hand.
+  step it copies them but keeps them (a workers-mode worker may resume from one); delete by hand.
 
 **Split by the exclusive resource, not by "half the tasks each".** The split is only safe when
 exactly one track can touch the contended thing — a single-session API or device, a dev server on

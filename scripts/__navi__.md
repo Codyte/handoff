@@ -1,8 +1,8 @@
 # __navi__ · `scripts/` — 2 files → code symbols / text NAV ranges
-<!-- navindex · 2026-10-04 · DO NOT EDIT BY HAND; regen via navindex skill -->
+<!-- navindex · 2026-10-16 · DO NOT EDIT BY HAND; regen via navindex skill -->
 ↑ repo tree: [`../__navi__.md`](../__navi__.md)
 
-- **merge_lane.py** (340 ln)
-  <sub>L43:HEADER  L44:NAV_MARK  L45:CONFLICT  L46:NAVINDEX  L49:run  L56:shell  L65:worktree_of  L75:links  L96:unlink  L102:nav_only  L124:regenerate  L143:rebase  L167:main  L233:_selftest  L275:_selftest_nav</sub>
+- **merge_lane.py** (345 ln)
+  <sub>L45:HEADER  L46:NAV_MARK  L47:CONFLICT  L48:NAVINDEX  L51:run  L58:shell  L67:worktree_of  L77:links  L98:unlink  L104:nav_only  L126:regenerate  L145:rebase  L169:main  L238:_selftest  L280:_selftest_nav</sub>
 - **session_stats.py** (77 ln)
   <sub>L16:profile  L44:row  L50:main</sub>

@@ -339,7 +339,7 @@ def ensure_hook(settings=None):
       SessionStart (matcher startup|clear) → injects the active handoff at boot.
       UserPromptSubmit --check-context     → nudges to /handoff once context gets expensive.
       PostToolUse --check-worker           → the same nudge inside a worker (subagent), to the model.
-    Also installs agents/worker.md (orchestrate mode's worker) into <settings dir>/agents/ when it
+    Also installs agents/worker.md (workers mode's worker) into <settings dir>/agents/ when it
     is absent or differs; a project's own .claude/agents/worker.md still overrides it there.
     The skill (writer) and these hooks (readers) are separate pieces; copying the skill folder to a
     new machine does NOT bring them. Running this once on a machine wires them. Writes THIS file's
@@ -625,7 +625,7 @@ def archive_current(cwd):
     stamp = datetime.datetime.now().strftime("%Y-%m-%dT%H%M%S")
     dest = arc_dir / (stamp + ".md")
     dest.write_text(txt + "\n", encoding="utf-8")
-    # An open plan means orchestrate mode may have a worker resuming from a track file: copy it,
+    # An open plan means workers mode may have a worker resuming from a track file: copy it,
     # never delete it. ponytail: a split handoff with an open plan keeps stale tracks; delete by hand.
     if not (pl and pl[1]):
         for t in tracks:
