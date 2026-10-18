@@ -2,12 +2,12 @@
 <!-- NAV INDEX — auto-generated symbol map (refresh via the navindex skill) -->
 <!--   L13     781B  Workers mode — `/handoff workers` -->
 <!--   L25     829B  Prerequisites (check once, at the first boot) -->
-<!--   L35     5.7K  The master loop -->
-<!--   L109    1.8K  Reuse — a related step goes to the warm worker (user ruling 2026-10-16) -->
-<!--   L135    2.0K  Concurrency — lanes -->
-<!--   L159    1.1K  Stop rules -->
-<!--   L174    740B  Anti-patterns -->
-<!--   L184    986B  Measuring a run -->
+<!--   L35     6.5K  The master loop -->
+<!--   L121    1.8K  Reuse — a related step goes to the warm worker (user ruling 2026-10-16) -->
+<!--   L147    2.0K  Concurrency — lanes -->
+<!--   L171    1.1K  Stop rules -->
+<!--   L186    740B  Anti-patterns -->
+<!--   L196    986B  Measuring a run -->
 <!-- ======================= END NAV INDEX ======================= -->
 
 # Workers mode — `/handoff workers`
@@ -48,15 +48,27 @@ Thinking belongs in rulings.
    saving. F123's 48-request worker would have saved ~1.2M tokens split in two.
    **Pick the model** (Agent `model`; the agent file defaults to Sonnet). Calibrated 2026-10-18
    (tia C11-C13; prices per M in/out: Haiku 5.5 $0.10/$0.50 up to a 100k prompt and 5x above it,
-   Sonnet 5.5 $2/$10, Opus 5.5 $4/$20; Terminal-Bench 4.0 Haiku 39% vs Sonnet 71%):
+   Sonnet 5.5 $2/$10, Opus 5.5 $4/$20). Artificial Analysis, all at High:
+   | | Haiku | Sonnet | Opus |
+   |---|---|---|---|
+   | cost/task | $0.08 | $0.88 | $1.82 |
+   | Terminal-Bench 4.0 | 22% | 44% | 57% |
+   | cost per success | ~$0.36 | ~$2.00 | ~$3.20 |
+   | output tokens/task | 55k (37k reasoning) | 37k | 36k |
+   Haiku is still cheapest per success, even after a retry. That holds only when a failure is cheap
+   to detect: the gate plus the master's diff read. Haiku thinks longer per task, so its saving
+   comes from price, not from writing fewer tokens. The routing ladder:
    - **Haiku**: one or two files, an existing pattern to copy, under ~15 requests, so the run
      stays below 100k. Boot is ~45k, which leaves Haiku about 50k of working room. Its hook
      checkpoint fires at 85k. Measured: C11 had 11 calls and 48k tokens, with a correct diff.
-   - **Sonnet** (default): normal coding lanes, several files, new tests. Measured: C12 and C13
-     took 20-27 calls and 65-72k tokens. Both shipped real slips: a doctor rule too broad, and
-     an IO rewrite that broke a test-openness assertion. The master's review and gate caught both.
+     A gate failure gets one Haiku retry with the error. A second failure escalates to Sonnet.
+   - **Sonnet** (default): normal coding lanes, several files, new tests. Measured: C12 took 27
+     calls and 72k tokens, with a clean diff and its own gate run. C13 took 20 + 5 calls and needed
+     two master round-trips: a doctor rule too broad, and an IO rewrite that broke `test-openness`.
+     The master's review and gate caught both.
    - **Opus**: live Portal/device work, ambiguous design, shared code with many callers, or a
-     lane Sonnet already failed twice.
+     lane Sonnet already failed twice. Opus scores only ~13 points above Sonnet at twice the
+     price, so reserve it for work where a wrong guess costs more than the run.
    Cheap models make the master's verification mandatory, not optional: read the diff against the
    step's intent and run the gate yourself when the worker reports `gate: not run`.
 3. **Brief** (40 lines max; the worker knows nothing else, CLAUDE.md and its agent file aside.
