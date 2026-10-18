@@ -40,6 +40,7 @@ installs the workers-mode `worker` agent to `~/.claude/agents/worker.md`:
   blocks a prompt.
 - `PostToolUse --check-worker` — the same checkpoint inside a worker subagent; silent on the main
   thread. It tells the worker (no user watches one) to write a track file and stop with PARTIAL.
+  A Haiku worker gets the same nudge at 85k, before its 100k price step.
 
 Idempotent: rerunning migrates older installs (adds the matcher, repairs a moved path); no-op if
 already correct.
@@ -92,7 +93,8 @@ automatically on the next `--archive`.
 [`SKILL.md`](SKILL.md) — full spec: the handoff format, the archive/navigate commands, and the
 boot-hook details; [`reference.md`](reference.md) holds the on-demand sections (context checkpoint,
 split mode, history, notes). [`workers.md`](workers.md) — `/handoff workers`: a master session
-runs `plan.md` through long-running worker subagents.
+runs `plan.md` through long-running worker subagents. Workers default to Sonnet. The master routes
+scoped lanes to Haiku and live or ambiguous work to Opus, ranked by cost per success (§ Pick the model).
 [`scripts/session_stats.py`](scripts/session_stats.py) — token profile of sessions and their
 workers from the transcripts (boot, mean/peak context, total processed): measures whether a run
 paid off. [`scripts/merge_lane.py`](scripts/merge_lane.py) — the master closes an offline lane in
