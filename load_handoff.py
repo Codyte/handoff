@@ -24,60 +24,61 @@ session; overwritten every handoff, archived first).
 """
 # ====================== BEGIN NAV INDEX ======================
 # NAV INDEX — auto-generated symbol map (refresh via the navindex skill)
-#   L92     101B  _key
-#   L96     337B  _git_root
-#   L106    549B  handoff_file
-#   L118    381B  track_files
-#   L126     99B  STANDING_CAP
-#   L129    629B  standing_file
-#   L140    512B  review_file
-#   L150    218B  review_note
-#   L156    739B  plan_file
-#   L169    814B  tick_text
-#   L188    635B  tick
-#   L203     59B  _PLAN_OPEN
-#   L204     64B  _PLAN_DONE
-#   L207    514B  plan_state
-#   L221    640B  migrate_standing
-#   L236    954B  standing_status
-#   L254    1.3K  legacy_note
-#   L274    315B  _archive_dir
-#   L281    280B  _archive_files
-#   L288    107B  _hook_flag
-#   L292    472B  _same_cmd
-#   L301    1.8K  _wire
-#   L337    2.5K  ensure_hook
-#   L376     99B  CTX_WARN_AT
-#   L377    107B  WORKER_WARN_AT
-#   L378     96B  CTX_WARN_STEP
-#   L379     99B  TURNS_WARN
-#   L380     97B  BOOT_FALLBACK
-#   L381     76B  HANDOFF_OUT
-#   L382    391B  REDERIVE
-#   L386     89B  WORKER_REREAD
-#   L387    281B  WORKER_RAMP
-#   L391    764B  _PRICES
-#   L404    465B  prices
-#   L415    828B  _usage_lines
-#   L437    353B  _tail
-#   L448    181B  _head
-#   L456    315B  context_tokens
-#   L463    597B  boot_context
-#   L476    1.4K  breakeven
-#   L503    1.6K  spawn_session
-#   L529     64B  STATE_DIR
-#   L532    713B  _warn_state
-#   L551    1.1K  check_context
-#   L572    1.4K  check_worker
-#   L599    1.8K  archive_current
-#   L636    270B  _section
-#   L643    843B  resume_skills_note
-#   L658    811B  history
-#   L678    1.2K  open_items
-#   L700   1006B  grep
-#   L721     14K  _selftest
-#   L943    1.9K  boot_breakdown
-#   L983    5.1K  main
+#   L93     101B  _key
+#   L97     337B  _git_root
+#   L107    549B  handoff_file
+#   L119    381B  track_files
+#   L127     99B  STANDING_CAP
+#   L130    629B  standing_file
+#   L141    512B  review_file
+#   L151    218B  review_note
+#   L157    739B  plan_file
+#   L170    814B  tick_text
+#   L189    635B  tick
+#   L204     59B  _PLAN_OPEN
+#   L205     64B  _PLAN_DONE
+#   L208    514B  plan_state
+#   L222    640B  migrate_standing
+#   L237    954B  standing_status
+#   L255    1.3K  legacy_note
+#   L275    315B  _archive_dir
+#   L282    280B  _archive_files
+#   L289    107B  _hook_flag
+#   L293    472B  _same_cmd
+#   L302    1.8K  _wire
+#   L338    2.5K  ensure_hook
+#   L377     99B  CTX_WARN_AT
+#   L378    107B  WORKER_WARN_AT
+#   L379    107B  HAIKU_WARN_AT
+#   L380     96B  CTX_WARN_STEP
+#   L381     99B  TURNS_WARN
+#   L382     97B  BOOT_FALLBACK
+#   L383     76B  HANDOFF_OUT
+#   L384    391B  REDERIVE
+#   L388     89B  WORKER_REREAD
+#   L389    281B  WORKER_RAMP
+#   L393    922B  _PRICES
+#   L408    465B  prices
+#   L419    828B  _usage_lines
+#   L441    353B  _tail
+#   L452    181B  _head
+#   L460    315B  context_tokens
+#   L467    597B  boot_context
+#   L480    1.4K  breakeven
+#   L507    1.6K  spawn_session
+#   L533     64B  STATE_DIR
+#   L536    713B  _warn_state
+#   L555    1.1K  check_context
+#   L576    1.9K  check_worker
+#   L611    1.8K  archive_current
+#   L648    270B  _section
+#   L655    843B  resume_skills_note
+#   L670    811B  history
+#   L690    1.2K  open_items
+#   L712   1006B  grep
+#   L733     14K  _selftest
+#   L955    1.9K  boot_breakdown
+#   L995    5.1K  main
 # ======================= END NAV INDEX =======================
 
 import sys, os, json, re, pathlib, datetime
@@ -375,6 +376,7 @@ def ensure_hook(settings=None):
 
 CTX_WARN_AT = 120_000        # floor: below this a nudge is noise even if breakeven says otherwise
 WORKER_WARN_AT = 200_000     # worker floor: an efficient worker runs to 200k unstopped (user, 2026-09-27)
+HAIKU_WARN_AT = 85_000       # Haiku 5.5 reprices the whole request 5x past 100k and degrades on long runs
 CTX_WARN_STEP = 20_000       # re-warn only after this much further growth (one nudge per band)
 TURNS_WARN = 8               # nudge once handoff pays for itself within this many remaining turns
 BOOT_FALLBACK = 20_000       # assumed post-/clear context when this project has no measured one
@@ -395,7 +397,9 @@ _PRICES = {"opus-5-5":  {"cr": 0.20, "cw": 5.00,  "out": 20.0},   # version keys
            "opus-4-6":  {"cr": 0.50, "cw": 6.25,  "out": 25.0},
            "opus-4-5":  {"cr": 0.50, "cw": 6.25,  "out": 25.0},
            "fable-5-1": {"cr": 0.25, "cw": 12.50, "out": 50.0},
+           "sonnet-5-5": {"cr": 0.10, "cw": 2.50, "out": 10.0},
            "sonnet-5":  {"cr": 0.20, "cw": 2.50,  "out": 10.0},
+           "haiku-5-5": {"cr": 0.01, "cw": 0.125, "out": 0.50},  # <=100k prompt; above it 5x
            "opus":      {"cr": 1.50, "cw": 18.75, "out": 75.0},
            "sonnet":    {"cr": 0.30, "cw": 3.75,  "out": 15.0},
            "haiku":     {"cr": 0.10, "cw": 1.25,  "out": 5.0}}
@@ -584,6 +588,14 @@ def check_worker(payload):
     key = f"{payload.get('session_id') or '?'}:{agent}"
     _warn_state(key, t.exists(), ".handoff_worker_seen")
     b = breakeven(t, sidechain=True)
+    if b and "haiku" in b["model"] and b["ctx"] >= HAIKU_WARN_AT:
+        band = b["ctx"] // CTX_WARN_STEP
+        if band > _warn_state(key):
+            _warn_state(key, band)
+            print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext":
+                f"Haiku checkpoint: ~{b['ctx']//1000}k, past 100k every request costs 5x. "
+                "Unless 1-2 calls finish the step, write .handoff/track1.md and stop with PARTIAL."}}))
+        return
     if not b or b["ctx"] < WORKER_WARN_AT or b["turns"] > TURNS_WARN:
         return
     band = b["ctx"] // CTX_WARN_STEP

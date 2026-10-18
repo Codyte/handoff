@@ -2,12 +2,12 @@
 <!-- NAV INDEX — auto-generated symbol map (refresh via the navindex skill) -->
 <!--   L13     781B  Workers mode — `/handoff workers` -->
 <!--   L25     829B  Prerequisites (check once, at the first boot) -->
-<!--   L35     4.6K  The master loop -->
-<!--   L96     1.8K  Reuse — a related step goes to the warm worker (user ruling 2026-10-16) -->
-<!--   L122    1.7K  Concurrency — lanes -->
-<!--   L143    1.1K  Stop rules -->
-<!--   L158    740B  Anti-patterns -->
-<!--   L168    986B  Measuring a run -->
+<!--   L35     5.7K  The master loop -->
+<!--   L109    1.8K  Reuse — a related step goes to the warm worker (user ruling 2026-10-16) -->
+<!--   L135    2.0K  Concurrency — lanes -->
+<!--   L159    1.1K  Stop rules -->
+<!--   L174    740B  Anti-patterns -->
+<!--   L184    986B  Measuring a run -->
 <!-- ======================= END NAV INDEX ======================= -->
 
 # Workers mode — `/handoff workers`
@@ -46,6 +46,19 @@ Thinking belongs in rulings.
    about n·boot + 1.5k·n² for n requests. A step heading past ~30 requests (4+ code items, 40+
    doc rows) is cheaper as two lanes; under ~25 the second boot and its re-reading eat the
    saving. F123's 48-request worker would have saved ~1.2M tokens split in two.
+   **Pick the model** (Agent `model`; the agent file defaults to Sonnet). Calibrated 2026-10-18
+   (tia C11-C13; prices per M in/out: Haiku 5.5 $0.10/$0.50 up to a 100k prompt and 5x above it,
+   Sonnet 5.5 $2/$10, Opus 5.5 $4/$20; Terminal-Bench 4.0 Haiku 39% vs Sonnet 71%):
+   - **Haiku**: one or two files, an existing pattern to copy, under ~15 requests, so the run
+     stays below 100k. Boot is ~45k, which leaves Haiku about 50k of working room. Its hook
+     checkpoint fires at 85k. Measured: C11 had 11 calls and 48k tokens, with a correct diff.
+   - **Sonnet** (default): normal coding lanes, several files, new tests. Measured: C12 and C13
+     took 20-27 calls and 65-72k tokens. Both shipped real slips: a doctor rule too broad, and
+     an IO rewrite that broke a test-openness assertion. The master's review and gate caught both.
+   - **Opus**: live Portal/device work, ambiguous design, shared code with many callers, or a
+     lane Sonnet already failed twice.
+   Cheap models make the master's verification mandatory, not optional: read the diff against the
+   step's intent and run the gate yourself when the worker reports `gate: not run`.
 3. **Brief** (40 lines max; the worker knows nothing else, CLAUDE.md and its agent file aside.
    Never restate those: lanes, shell rule and report format are already loaded. Agent files
    load at session start, so a rule added to the agent file mid-run reaches this run's workers

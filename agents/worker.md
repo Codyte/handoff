@@ -1,7 +1,7 @@
 ---
 name: worker
 description: Long-running implementer for ONE step of a `/handoff workers` plan. The master passes a brief (step, goal, done-when, gate command, files); the worker executes only that step, commits, and returns a report of 15 lines or fewer. Spawn only from workers mode, never ad hoc.
-model: opus
+model: sonnet
 tools: Bash, PowerShell, Read, Edit, Write, Grep, Glob, Skill, SubagentHandback
 skills:
   - onecall
