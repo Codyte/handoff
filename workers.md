@@ -2,12 +2,12 @@
 <!-- NAV INDEX — auto-generated symbol map (refresh via the navindex skill) -->
 <!--   L13     781B  Workers mode — `/handoff workers` -->
 <!--   L25     829B  Prerequisites (check once, at the first boot) -->
-<!--   L35     6.5K  The master loop -->
-<!--   L121    1.8K  Reuse — a related step goes to the warm worker (user ruling 2026-10-16) -->
-<!--   L147    2.0K  Concurrency — lanes -->
-<!--   L171    1.1K  Stop rules -->
-<!--   L186    740B  Anti-patterns -->
-<!--   L196    986B  Measuring a run -->
+<!--   L35     6.9K  The master loop -->
+<!--   L125    1.8K  Reuse — a related step goes to the warm worker (user ruling 2026-10-16) -->
+<!--   L151    2.0K  Concurrency — lanes -->
+<!--   L175    1.1K  Stop rules -->
+<!--   L190    740B  Anti-patterns -->
+<!--   L200    986B  Measuring a run -->
 <!-- ======================= END NAV INDEX ======================= -->
 
 # Workers mode — `/handoff workers`
@@ -72,10 +72,14 @@ Thinking belongs in rulings.
    Cheap models make the master's verification mandatory, not optional: read the diff against the
    step's intent and run the gate yourself when the worker reports `gate: not run`.
 3. **Brief** (40 lines max; the worker knows nothing else, CLAUDE.md and its agent file aside.
-   Never restate those: lanes, shell rule and report format are already loaded. Agent files
+   Never restate those: lanes and report format are already loaded. Agent files
    load at session start, so a rule added to the agent file mid-run reaches this run's workers
-   only through the brief):
+   only through the brief). **Every brief carries the `Method:` line verbatim**, even when the
+   agent file preloads `onecall`: a project's own `.claude/agents/worker.md` may drop it, and the
+   line costs one line against a worker that fires one call per question:
    ```
+   Method: onecall. Before the first shell call, list the step's questions and layer them by
+     dependency; one bounded, labelled call per layer (`=== N ===`, joined with `;`).
    Step: <plan step number and title>
    Goal: <one or two lines: the outcome, not the method>
    Done when: <verbatim from plan.md>
