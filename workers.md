@@ -76,10 +76,14 @@ Thinking belongs in rulings.
    load at session start, so a rule added to the agent file mid-run reaches this run's workers
    only through the brief). **Every brief carries the `Method:` line verbatim**, even when the
    agent file preloads `onecall`: a project's own `.claude/agents/worker.md` may drop it, and the
-   line costs one line against a worker that fires one call per question:
+   line costs one line against a worker that fires one call per question. The line orders a full
+   Read of the skill file, not a summary of it (user ruling 2026-10-27: a worker briefed with the
+   summary alone followed the skill poorly in its transcript).
    ```
-   Method: onecall. Before the first shell call, list the step's questions and layer them by
-     dependency; one bounded, labelled call per layer (`=== N ===`, joined with `;`).
+   Method: onecall. First tool call: Read ~/.claude/skills/onecall/SKILL.md in full (no offset or
+     limit) and follow it for the whole step. Before each shell call, write the questions of that
+     step, layer them by dependency, and run one bounded call per layer (`=== N ===` labels,
+     joined with `;`, every piece capped with head/cut).
    Step: <plan step number and title>
    Goal: <one or two lines: the outcome, not the method>
    Done when: <verbatim from plan.md>
