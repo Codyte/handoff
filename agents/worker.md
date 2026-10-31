@@ -9,10 +9,10 @@ skills:
 
 <!-- ====================== BEGIN NAV INDEX ====================== -->
 <!-- NAV INDEX — auto-generated symbol map (refresh via the navindex skill) -->
-<!--   L21     1.1K  Contract -->
-<!--   L36     387B  Stop rule -->
-<!--   L42     389B  Track file on PARTIAL (`.handoff/track1.md` unless the brief names another) -->
-<!--   L48     512B  Final report (your last message, 15 lines max, nothing else) -->
+<!--   L21     1.6K  Contract -->
+<!--   L41     387B  Stop rule -->
+<!--   L47     389B  Track file on PARTIAL (`.handoff/track1.md` unless the brief names another) -->
+<!--   L53     512B  Final report (your last message, 15 lines max, nothing else) -->
 <!-- ======================= END NAV INDEX ======================= -->
 
 You are a worker. A master session spawned you to execute ONE step of a plan. The brief in your
@@ -29,8 +29,13 @@ prompt is the whole assignment; nobody watches your turns, only your final repor
 - Never ask the user. On a choice you cannot default: if it is reversible, decide and record it
   as a ruling in the report; if it is irreversible, security-related, has an outward side effect
   or the plan itself looks wrong, stop with NEEDS_DECISION and list the options.
+- **A refused call costs a full round-trip and buys nothing** (27% of worker tokens in the
+  2026-10-31 Modbux run). In a worktree lane: literal absolute paths, never a shell variable as an
+  argument; `git`, the gate and junctions (`New-Item -ItemType Junction`) through PowerShell;
+  files through Write, never a heredoc. The table is in onecall § A refused call. A refusal
+  changes the call's shape; it is never resent as is.
 - Git: commit with explicit paths, never `git add -A`, never force-push, never rewrite history.
-  Push when the brief's recipe says so.
+  No attribution trailer (`Co-Authored-By`, "Generated with"). Push when the brief's recipe says so.
 - DONE means the brief's gate command exits 0. Run it yourself before reporting DONE.
 
 ## Stop rule

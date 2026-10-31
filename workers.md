@@ -1,13 +1,14 @@
 <!-- ====================== BEGIN NAV INDEX ====================== -->
 <!-- NAV INDEX — auto-generated symbol map (refresh via the navindex skill) -->
-<!--   L13     781B  Workers mode — `/handoff workers` -->
-<!--   L25     829B  Prerequisites (check once, at the first boot) -->
-<!--   L35     6.9K  The master loop -->
-<!--   L125    1.8K  Reuse — a related step goes to the warm worker (user ruling 2026-10-16) -->
-<!--   L151    2.0K  Concurrency — lanes -->
-<!--   L175    1.1K  Stop rules -->
-<!--   L190    740B  Anti-patterns -->
-<!--   L200    986B  Measuring a run -->
+<!--   L14     781B  Workers mode — `/handoff workers` -->
+<!--   L26     829B  Prerequisites (check once, at the first boot) -->
+<!--   L36     7.4K  The master loop -->
+<!--   L132    1.8K  Reuse — a related step goes to the warm worker (user ruling 2026-10-16) -->
+<!--   L158    2.0K  Concurrency — lanes -->
+<!--   L182    1.1K  Stop rules -->
+<!--   L197    1.1K  Master turns are the expensive ones -->
+<!--   L212    740B  Anti-patterns -->
+<!--   L222    986B  Measuring a run -->
 <!-- ======================= END NAV INDEX ======================= -->
 
 # Workers mode — `/handoff workers`
@@ -99,7 +100,9 @@ Thinking belongs in rulings.
    It runs in the background; end the turn. **Never poll** and never read its transcript: the
    completion notification brings the report.
 5. **Verify** on the notification, in one shell call. Offline lane:
-   `python <skill>/scripts/merge_lane.py <branch> --check "<gate>" --tick <N> "<evidence>" --push`
+   `python <skill>/scripts/merge_lane.py <branch> --check "<gate> && <build> && <e2e specs>" --tick <N> "<evidence>" --push`
+   (the step's e2e specs go inside `--check`, so merge, gate, e2e, tick and push are one call; a
+   failing check stops before the tick)
    rebases when main moved (rerunning `--gate` inside the lane), prints commits, numstat and the
    deleted non-header lines, merges `--ff-only`, runs the check, unlinks junctions before removing
    the worktree, ticks the step and pushes; `--inspect` stops before the merge. In-place lane:
@@ -190,6 +193,21 @@ its current context per request.
   session. plan.md already holds the ledger
   and rulings, so the handoff is short; ask the user to `/clear`, and the next master boots on the
   plan and resumes at step 1 of the loop.
+
+## Master turns are the expensive ones
+Each master request re-reads a window that only grows (Modbux 2026-10-31: 37 requests, mean
+110k, 4 067k processed, 43% of the run beside 6 workers). A worker request costs about half.
+- **Three master requests per step**: the verify call (step 5, which also ticks), the next spawn,
+  and the one-line close after it. Anything beyond them is a request to justify.
+- **A notification that leaves another worker running gets one line and no tool call.** Verify
+  once, when the last worker the step waits on reports.
+- **An environment trap goes to `standing.md` the moment it is found, and the next brief names
+  its workaround.** The same run spent 5 master calls (~500k) on one inherited environment
+  variable (`ELECTRON_RUN_AS_NODE=1`) before an e2e launched.
+- **Worker rules go in `agents/worker.md`, not in every brief.** A brief line is paid on every
+  worker request; the agent file is paid once per boot and reaches every worker.
+- **No attribution trailer** in commits the master or a worker writes (`Co-Authored-By`,
+  "Generated with"): it carries no information and is paid in every commit message read back.
 
 ## Anti-patterns
 - A reviewer agent per task. The gate command is the review; the master reads `git diff --stat`.
