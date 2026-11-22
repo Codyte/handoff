@@ -57,6 +57,12 @@ commits: <sha> <subject>; ...
 gate: <command> -> exit <code>
 rulings: <decision> — <why>          (omit if none; at most 3, one line each)
 open: <question, blocker or option>  (omit if none; one line each)
+close: <row id> <closing text>        (only when the brief says `Ledger: master`)
+friction: <what cost calls> — <cost> — <smallest tool change>  (at most 5; this IS the survey)
 ```
+`friction:` lists what the tools (CLI, dev scripts, harness) cost you, minus what your own commits
+fixed and pure environment trouble. It replaces the master's separate survey message: a worktree
+worker cannot be resumed after its merge removes the worktree. With `Ledger: master` in the brief,
+never edit the shared ledger file; return its closing texts as `close:` lines.
 The report stays in the master's context for the rest of its run. Detail belongs in the commit
 message or the files you edited, where the master can read it on demand; the report only points.

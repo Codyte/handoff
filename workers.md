@@ -216,6 +216,12 @@ Each master request re-reads a window that only grows (Modbux 2026-10-31: 37 req
 - Re-dispatching a ticked step, or dispatching without checking `done when` first.
 - Worker briefs that restate CLAUDE.md or the skill: it is already loaded; point to sections.
 - Letting a worker ask the user. Nobody is there; it returns NEEDS_DECISION instead.
+- A separate survey message per worker. The report's `friction:` lines are the survey: one round-trip
+  less per worker, and a worktree worker cannot be resumed once `merge_lane.py` removed its worktree
+  (solid 2026-11-22: the 91b survey was lost that way).
+- Two lanes editing one shared ledger (a friction table, a changelog). Parallel lanes conflict on the
+  rebase (solid 2026-11-22: ~3 master calls). Brief them `Ledger: master` and they return `close:`
+  lines; the master writes the ledger once, after the merges.
 - Invoking `/handoff` only to start or resume a master: read this file directly; SKILL.md adds
   nothing the loop uses and stays in the master's context for the whole run.
 
