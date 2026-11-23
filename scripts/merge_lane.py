@@ -1,11 +1,13 @@
 """Close one offline lane of a workers run in one call (master side, from the main checkout).
 
-    python merge_lane.py <branch> [--gate CMD] [--check CMD] [--tick STEP EVIDENCE] [--push] [--inspect] [--keep]
+    python merge_lane.py <branch> [--gate CMD] [--check CMD] [--tick STEP EVIDENCE] [--push] [--inspect] [--keep] [--generated A,B]
 
 1. When main moved since the lane branched, rebase the branch inside its worktree and rerun --gate
    there (the lane's own offline gate). An unmoved base keeps the worker's gate result.
    A rebase stop whose conflicts are only `__navi__.md` maps or hunks inside NAV INDEX headers is
    regenerated (navindex) and continued; any other conflict stops with its paths named.
+   `--generated a,b` names build-generated files (e.g. docs/VERBS.md): a conflict there takes the
+   upstream copy and continues; the --check build regenerates them, the master commits the result.
 2. Print what changes: commits, `diff -w --numstat`, and deleted lines that are not NAV INDEX
    header churn (a proxied, condensed diff once made regenerated headers look like lost history).
 3. `merge --ff-only`, then --check runs in the main checkout (the cheap acceptance gate).
@@ -19,22 +21,22 @@ worktree, junctions and branch stay; after the ff merge the branch equals main.
 Measured on tia F123 (2026-09-28): closing a lane by hand took the master ~4 calls at ~130k each.
 """
 # ====================== BEGIN NAV INDEX ======================
-# NAV INDEX — auto-generated symbol map (refresh via the navindex skill)
-#   L45      60B  HEADER
-#   L46      54B  NAV_MARK
-#   L47      56B  CONFLICT
-#   L48      81B  NAVINDEX
-#   L51     288B  run
-#   L58     359B  shell
-#   L67     282B  worktree_of
-#   L77     579B  links
-#   L98     222B  unlink
-#   L104    874B  nav_only
-#   L126    881B  regenerate
-#   L145    1.4K  rebase
-#   L169    2.6K  main
-#   L238    1.9K  _selftest
-#   L280    2.8K  _selftest_nav
+# NAV INDEX — auto-generated symbol map (refresh via the navindex skill: https://github.com/Codyte/navindex)
+#   L47      60B  HEADER
+#   L48      54B  NAV_MARK
+#   L49      56B  CONFLICT
+#   L50      81B  NAVINDEX
+#   L53     288B  run
+#   L60     359B  shell
+#   L69     282B  worktree_of
+#   L79     579B  links
+#   L100    222B  unlink
+#   L106    874B  nav_only
+#   L128    881B  regenerate
+#   L147    1.7K  rebase
+#   L175    2.7K  main
+#   L244    1.9K  _selftest
+#   L286    2.8K  _selftest_nav
 # ======================= END NAV INDEX =======================
 
 import os
@@ -142,7 +144,7 @@ def regenerate(wt, path):
     run([sys.executable, NAVINDEX, target, *extra], cwd=wt)
 
 
-def rebase(into, wt):
+def rebase(into, wt, generated=()):
     """Rebase the branch checked out in `wt` onto `into`, regenerating NAV-only conflicts; any other
     conflict exits naming its paths, the rebase left stopped in `wt` for the master to resolve."""
     env = dict(os.environ, GIT_EDITOR="true")
@@ -151,12 +153,16 @@ def rebase(into, wt):
     p = git("rebase", into)
     while p.returncode:
         paths = run(["git", "diff", "--name-only", "--diff-filter=U"], cwd=wt).splitlines()
-        content = [f for f in paths if not nav_only(os.path.join(wt, f))]
+        gen = [f for f in paths if f in generated]
+        content = [f for f in paths if f not in gen and not nav_only(os.path.join(wt, f))]
         if not paths or content:
             sys.exit(f"FAIL rebase onto {into} stopped in {wt}; conflicted outside NAV INDEX: "
                      f"{', '.join(content) or '(none)'}; resolve there or `git rebase --abort`\n"
                      + (p.stdout + p.stderr).strip()[-800:])
-        for f in paths:
+        if gen:                             # during a rebase "ours" is the upstream being rebuilt on
+            run(["git", "checkout", "--ours", "--", *gen], cwd=wt)
+            print(f"took upstream for generated: {', '.join(gen)} (the --check build regenerates)")
+        for f in (f for f in paths if f not in gen):
             regenerate(wt, f)
         run(["git", "add", "-A", "--", *paths], cwd=wt)
         side = run(["git", "diff", "--name-only"], cwd=wt).splitlines()
@@ -186,7 +192,7 @@ def main(argv):
         sys.exit(f"FAIL no worktree has branch {branch}")
     print(f"=== 1 base ({branch} -> {into}) ===")
     if subprocess.run(["git", "merge-base", "--is-ancestor", into, branch]).returncode:
-        rebase(into, wt)
+        rebase(into, wt, (opt("--generated") or "").replace("\\", "/").split(","))
         print(f"rebased onto {into}")
         if opt("--gate"):
             shell(opt("--gate"), wt, "lane gate after rebase")
