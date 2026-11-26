@@ -179,6 +179,18 @@ its current context per request.
 - Default cap: two offline lanes beside the resource lane; raise it when builds do not slow the
   resource lane. Each spawn costs a boot (~44k), so split only work that runs long.
 
+## Optional backend: agy (`/handoff workers agy`)
+
+Opt-in only; the Claude `worker` agent stays the default until 3 real agy steps pass review.
+One step per call, run by the master in a shell:
+
+    python ~/.claude/skills/handoff/scripts/agy_worker.py --repo <repo> --name <lane> --brief <file> --paths <p>...
+
+- agy edits files only (headless auto-denies commands; keep it so, never skip permissions). The
+  master reads the diff, runs the gate, commits on `agy/<lane>` and merges as for any lane.
+- `--paths` is all it gets. Everything it reads goes to Google: no secrets, keys, client data.
+- No Portal / live work. Quota: `agy -p "/usage"`. Its report is a claim, not evidence.
+
 ## Stop rules
 - **Worker**: the `PostToolUse --check-worker` hook adds `Worker checkpoint: ~Xk vs ~Yk fresh
   worker. More than ~N turns left: ...` to its context once handing off beats continuing, and
