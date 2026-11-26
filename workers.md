@@ -182,12 +182,18 @@ its current context per request.
 ## agy backend: default for offline lanes (user ruling 2026-11-26)
 
 Heavy offline work goes to the Antigravity CLI, which spends another paid quota; Claude stays the
-master. **On trial** until 3 reviewed real steps pass; record each in the report to the user.
+master. Trial passed 2026-11-26 (3 reviewed real steps, small and well specified); larger or
+ambiguous steps are still unproven.
 Keep the Claude `worker` for: resource/Portal/live lanes, ambiguous design, a repo without
 `.agyignore`, a step that needs commands to explore, quota below 5%, or agy not DONE twice.
 
     python ~/.claude/skills/handoff/scripts/agy_worker.py --repo <repo> --name <lane>         --brief <file> --gate "<offline gate>" --message "<commit subject>"
 
+- Before dispatch, prove the gate both ways: it fails on the baseline for the intended reason, and
+  every mechanism it uses (reflection, junctions, quoting) has run once successfully. A gate bug
+  burns both retries (2026-11-26: 343k agy tokens on a correct diff). Run the gate in a sparse
+  worktree: tests that need excluded files must be tolerated by name.
+- Gitignored build inputs (e.g. `lib/`) are absent: the gate links them and unlinks in `finally`.
 - Run it as one background shell call and end the turn; its report is the worker report. Do not
   read agy's log unless the status is not DONE.
 - agy only reads/edits inside its worktree (commands and outside reads are auto-denied; keep it so).
