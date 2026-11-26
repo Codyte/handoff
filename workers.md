@@ -179,17 +179,38 @@ its current context per request.
 - Default cap: two offline lanes beside the resource lane; raise it when builds do not slow the
   resource lane. Each spawn costs a boot (~44k), so split only work that runs long.
 
-## Optional backend: agy (`/handoff workers agy`)
+## agy backend: default for offline lanes (user ruling 2026-11-26)
 
-Opt-in only; the Claude `worker` agent stays the default until 3 real agy steps pass review.
-One step per call, run by the master in a shell:
+Heavy offline work goes to the Antigravity CLI, which spends another paid quota; Claude stays the
+master. **On trial** until 3 reviewed real steps pass; record each in the report to the user.
+Keep the Claude `worker` for: resource/Portal/live lanes, ambiguous design, a repo without
+`.agyignore`, a step that needs commands to explore, quota below 5%, or agy not DONE twice.
 
-    python ~/.claude/skills/handoff/scripts/agy_worker.py --repo <repo> --name <lane> --brief <file> --paths <p>...
+    python ~/.claude/skills/handoff/scripts/agy_worker.py --repo <repo> --name <lane>         --brief <file> --gate "<offline gate>" --message "<commit subject>"
 
-- agy edits files only (headless auto-denies commands; keep it so, never skip permissions). The
-  master reads the diff, runs the gate, commits on `agy/<lane>` and merges as for any lane.
-- `--paths` is all it gets. Everything it reads goes to Google: no secrets, keys, client data.
-- No Portal / live work. Quota: `agy -p "/usage"`. Its report is a claim, not evidence.
+- Run it as one background shell call and end the turn; its report is the worker report. Do not
+  read agy's log unless the status is not DONE.
+- agy only reads/edits inside its worktree (commands and outside reads are auto-denied; keep it so).
+  The script runs the gate, feeds failures back (2 retries) and commits on `agy/<lane>`.
+- Master still reads the diff (`git diff main...agy/<lane>`), then merges with `merge_lane.py`.
+- `<repo>/.agyignore` (required) lists what never goes to Google. `.license/`, `.handoff/`, `.env`
+  and key files are always excluded. Briefs must not carry secrets or client data either.
+- Warm reuse: same `--name` with a new `--brief` continues the worktree and conversation. Merge
+  with `--keep` to reuse; after the last step remove the worktree.
+- Model: `--model <id>` from `agy models` (default is the account's). Quota is printed per run;
+  from a shell use PowerShell for `agy -p "/usage"` (Git Bash rewrites the argument).
+
+Brief template (agy loads neither CLAUDE.md of the user nor `worker.md`; the script adds the
+contract rules):
+
+    Step: <number and title>
+    Goal: <outcome>
+    Done when: <verbatim from plan.md>
+    Read first: <path:line ranges>
+    Area: <files it may change>
+    Do not touch: <files>
+    Conventions: <the few repo rules this step needs, stated here>
+    Rulings so far: <any>
 
 ## Stop rules
 - **Worker**: the `PostToolUse --check-worker` hook adds `Worker checkpoint: ~Xk vs ~Yk fresh
