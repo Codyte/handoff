@@ -31,10 +31,13 @@ Rules (you are a worker; a master reads only your final answer):
 - Do only this step. Anything out of scope goes under `open:`.
 - Read AGENTS.md / CLAUDE.md in this folder if present and obey them.
 - Edit files only. You cannot run commands or commit; the caller runs the gate and commits.
+- Commands, workflows and subagents are denied and calling one can end your turn with nothing
+  done. Use only the file read, search and write tools.
 - Stay inside this folder. Read narrowly; never rewrite a whole file for a small change.
 - If the choice is irreversible or the task looks wrong, change nothing and say NEEDS_DECISION.
 - Final answer, 8 lines max: `changed:`, `rulings:` (decision and why), `open:`."""
 MIN_QUOTA = 5  # percent
+FALLBACK_MODEL = "gemini-4-neon-high"  # separate quota from the Claude/GPT group
 
 
 def find_agy():
@@ -106,6 +109,7 @@ def work(repo, tree, name, brief, gate, message, retries, agent, state):
         git(repo, "worktree", "add", "--no-checkout", "-b", "agy/" + name, str(tree))
         git(tree, "sparse-checkout", "set", "--no-cone", *patterns)
         git(tree, "checkout")
+    unlink_junctions(tree)
     report = {"status": "FAILED", "commit": None, "gate": None, "files": [], "attempts": 0,
               "tokens": 0, "denied": [], "answer": "", "log": []}
     prompt = brief + RULES
@@ -119,12 +123,17 @@ def work(repo, tree, name, brief, gate, message, retries, agent, state):
         report["answer"] = data.get("response") or ""
         # captured before the gate, so build output the gate leaves behind is never committed
         report["files"] = changed_paths(tree)
-        if data.get("status") != "SUCCESS" or data.get("exit"):
-            report["error"] = "agy %s, exit %s" % (data.get("status"), data.get("exit"))
-            return report
+        ok = data.get("status") == "SUCCESS" and not data.get("exit")
+        failure = "agy %s, exit %s: %s" % (data.get("status"), data.get("exit"), str(data.get("error", ""))[:200])
         if not report["files"]:
-            report["error"] = "no file changed"
+            report["error"] = "no file changed" if ok else failure
+            if ok and data.get("denied_actions") and attempt < retries:
+                prompt = ("A denied tool call ended your turn with no change. Use only the file read, "
+                          "search and write tools.\n\n" + brief + RULES)
+                continue
             return report
+        if not ok:  # agy died after editing: the gate still decides, the master is told
+            report["warn"] = failure
         code, out, err = run(gate, cwd=tree, shell=True, timeout=1800)
         report["gate"] = code
         if code == 0:
@@ -135,8 +144,31 @@ def work(repo, tree, name, brief, gate, message, retries, agent, state):
             return report
         tail = (out + "\n" + err).strip()[-3000:]
         report.update(status="PARTIAL", error="gate exit %s: %s" % (code, tail[-300:]))
+        if not ok:
+            return report
         prompt = "The gate command `%s` failed (exit %s). Fix the cause. Output tail:\n%s" % (gate, code, tail)
     return report
+
+
+def unlink_junctions(tree):
+    """Drop links (e.g. a gate's lib/) left at the worktree root; a recursive delete follows them."""
+    if not tree.is_dir():
+        return
+    for entry in os.scandir(tree):
+        if getattr(os.path, "isjunction", lambda p: False)(entry.path):
+            os.rmdir(entry.path)  # removes the link only
+
+
+def with_fallback(call, models, brief, notes):
+    """call(prompt, conversation, model); moves to the next model when a quota runs out."""
+    def agent(prompt, conversation):
+        data = call(prompt, conversation, models[0])
+        if "quota reached" in str(data.get("error", "")).lower() and len(models) > 1:
+            notes.append("quota reached on %s, switched to %s" % (models[0], models[1]))
+            models.pop(0)
+            data = call(prompt if brief in prompt else brief + RULES + "\n\n" + prompt, None, models[0])
+        return data
+    return agent
 
 
 def selftest():
@@ -173,6 +205,38 @@ def selftest():
         gave = case("giveup", ["bad\n", "bad2\n"], retries=1)
         assert gave["status"] == "PARTIAL" and gave["commit"] is None
         assert case("nochange", [""])["status"] == "FAILED"
+
+        def scripted(name, steps):
+            tree, seq = Path(tmp) / name, list(steps)
+
+            def agent(prompt, conversation):
+                text, extra = seq.pop(0)
+                if text:
+                    (tree / "a.txt").write_text(text)
+                return dict({"status": "SUCCESS", "response": "ok", "exit": 0}, **extra)
+
+            return work(repo, tree, name, "brief", gate, "msg " + name, 2, agent, {})
+
+        denied = scripted("denied", [("", {"denied_actions": [{"action": "command"}]}), ("good\n", {})])
+        assert denied["status"] == "DONE" and denied["attempts"] == 2
+        died = scripted("died", [("good\n", {"status": "ERROR", "exit": 3, "error": "boom"})])
+        assert died["status"] == "DONE" and "boom" in died["warn"]
+        seen, notes = [], []
+
+        def call(prompt, conversation, model):
+            seen.append(model)
+            return {"error": "Third-party quota reached."} if model == "claude-x" else {"status": "SUCCESS"}
+
+        assert with_fallback(call, ["claude-x", "gem"], "b", notes)("b", "c1")["status"] == "SUCCESS"
+        assert seen == ["claude-x", "gem"] and notes
+        if os.name == "nt":
+            target, holder = Path(tmp) / "target", Path(tmp) / "holder"
+            target.mkdir()
+            holder.mkdir()
+            (target / "keep.txt").write_text("x")
+            assert run(["cmd", "/c", "mklink", "/J", str(holder / "lib"), str(target)])[0] == 0
+            unlink_junctions(holder)
+            assert not (holder / "lib").exists() and (target / "keep.txt").exists()
         (repo / ".agyignore").unlink()
         try:
             case("noignore", ["good\n"])
@@ -201,18 +265,29 @@ def main():
     if not agy:
         sys.exit("agy not found")
     low = quota_low(agy)
-    group = "Claude and GPT models" if a.model and a.model.startswith(("claude", "gpt")) else "Gemini Models"
-    if low and low.get(group, 100) < MIN_QUOTA:
-        sys.exit("STATUS: FAILED\nagy quota for %s below %s%%; use the Claude worker" % (group, MIN_QUOTA))
 
+    def group_of(model):
+        return "Claude and GPT models" if model and model.startswith(("claude", "gpt")) else "Gemini Models"
+
+    models, notes = [a.model], []
+    if group_of(a.model) != "Gemini Models":
+        models.append(FALLBACK_MODEL)
+    while models and low and low.get(group_of(models[0]), 100) < MIN_QUOTA:
+        notes.append("quota below %s%% for %s" % (MIN_QUOTA, models.pop(0)))
+    if not models:
+        sys.exit("STATUS: FAILED\nagy quota below %s%%; use the Claude worker" % MIN_QUOTA)
+    group = group_of(models[0])
     repo = Path(a.repo).resolve()
     # outside the repo parent: a sibling of a skill repo would be discovered as a second skill
     tree = Path(tempfile.gettempdir()) / ("agy-%s-%s" % (repo.name, a.name))
     state_file = tree.with_name(tree.name + ".state.json")
     state = json.loads(state_file.read_text()) if tree.exists() and state_file.exists() else {}
-    r = work(repo, tree, a.name, Path(a.brief).read_text(encoding="utf-8"), a.gate,
-             a.message or "agy: " + a.name, a.retries,
-             lambda p, c: call_agy(agy, tree, p, c, a.timeout, a.model), state)
+    brief = Path(a.brief).read_text(encoding="utf-8")
+    agent = with_fallback(lambda p, c, m: call_agy(agy, tree, p, c, a.timeout, m), models, brief, notes)
+    try:
+        r = work(repo, tree, a.name, brief, a.gate, a.message or "agy: " + a.name, a.retries, agent, state)
+    finally:
+        unlink_junctions(tree)  # also after an interrupted gate
     state_file.write_text(json.dumps(state))
     log = tree.with_name(tree.name + ".log.json")
     log.write_text(json.dumps(r["log"], indent=1), encoding="utf-8")
@@ -223,6 +298,8 @@ def main():
     print("files: " + (", ".join(r["files"][:12]) or "none") + (" ..." if len(r["files"]) > 12 else ""))
     if r.get("error"):
         print("error: " + " ".join(r["error"].split())[:400])
+    for note in notes + ([r["warn"]] if r.get("warn") else []):
+        print("warn: " + " ".join(note.split())[:300])
     if r["denied"]:
         print("denied: " + ", ".join(sorted(set(r["denied"]))))
     for line in r["answer"].strip().splitlines()[:8]:

@@ -185,7 +185,7 @@ Heavy offline work goes to the Antigravity CLI, which spends another paid quota;
 master. Trial passed 2026-11-26 (3 reviewed real steps, small and well specified); larger or
 ambiguous steps are still unproven.
 Keep the Claude `worker` for: resource/Portal/live lanes, ambiguous design, a repo without
-`.agyignore`, a step that needs commands to explore, quota below 5%, or agy not DONE twice.
+`.agyignore`, a step that needs commands to explore, both quota groups below 5%, or agy not DONE twice.
 
     python ~/.claude/skills/handoff/scripts/agy_worker.py --repo <repo> --name <lane>         --brief <file> --gate "<offline gate>" --message "<commit subject>"
 
@@ -194,6 +194,14 @@ Keep the Claude `worker` for: resource/Portal/live lanes, ambiguous design, a re
   burns both retries (2026-11-26: 343k agy tokens on a correct diff). Run the gate in a sparse
   worktree: tests that need excluded files must be tolerated by name.
 - Gitignored build inputs (e.g. `lib/`) are absent: the gate links them and unlinks in `finally`.
+- Keep one versioned gate per repo (tia: `scripts/agy-gate.py --check <step check>`), called by its
+  main-checkout path so the lane cannot edit it. Write only the step check each time.
+- Goal mode: one outcome plus a gate that proves it; agy iterates on the gate errors, the master
+  reviews the diff once. Commands, Portal and push stay with the master (a command allow list is no
+  boundary in headless agy on Windows 10).
+- The script handles the usual stalls: it forbids workflow and subagent calls in the brief and
+  retries after a denial, runs the gate on files left by a run that errored (`warn:` line, read that
+  diff with care), falls back to Gemini when the Claude/GPT quota runs out, and removes junctions.
 - Run it as one background shell call and end the turn; its report is the worker report. Do not
   read agy's log unless the status is not DONE.
 - agy only reads/edits inside its worktree (commands and outside reads are auto-denied; keep it so).
